@@ -29,8 +29,10 @@ The VLIW retargetable compiler backend is described in the following paper. If y
 [Getting started](#Getting-started)
 
 - [Installation](#Installation)
-- [Files for Target Architecture](#Files-for-Target Architecture)
-- [Compile Process](#Compile Process)
+- [Configuration](#Configuration)
+- [Compilation](#Compilation)
+- [Formatting](#Formatting)
+- [Documentation](#Documentation)
 
 
 [Contributors](#Contributors)
@@ -48,7 +50,7 @@ git clone https://github.com/tubs-eis/VLIW-Retargetable-Compiler-Backend.git
 ```
 
 
-### Files for Target Architecture
+### Configuration
 In `conf` an exemplary, reduced target architecture is described.
 
 The processor configuration, such as issue slots and register file configuration is described in `processor-config.xml`.
