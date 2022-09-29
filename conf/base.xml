@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<processor>
+  <register-file>
+    <VUbit>5</VUbit>
+    <special-regs>
+      <sreg binary="XXXXXXX">FIR    </sreg> <!-- pointer register -->
+    </special-regs>
+  </register-file>
+  <binary-size>16384</binary-size>
+  <instruction>
+    <size>32</size>
+    <allowMultiple>true</allowMultiple>
+  </instruction>
+  <preprocessor>
+    <regex before="--scheduling-(.*)-o([nf]+)" after="--scheduling-o$2" />
+
+
+  </preprocessor>
+  <FU-define>
+    <FU name="NOP">
+      <opp name="NOP">
+        00000 0000000 XXXXXXX XXXXXX XXXXXXX
+      </opp>
+      <opp name="IDLE">
+        00000 0000000 XXXXXXX XXXXXX XXXXXXX
+      </opp>
+    </FU>
+    <FU name="BA">
+      <direction pos="1" dir="write" />
+      <size name="_16" default="true">
+        XXXXX X0XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <size name="_U16">
+        XXXXX X1XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <opp name="ADD">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="ADDI">
+        <par pos="3" type="Imm" />
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="SUB">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="SUBI">
+        <par pos="3" type="Imm" />
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <suf name="s">
+        XXXXX XX1XXXX XXXXXXX XXXXXX XXXXXXX
+      </suf>
+    </FU>
+        <FU name="AA">
+      <direction pos="1" dir="write" />
+      <size name="_16" default="true">
+        XXXXX X0XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <size name="_U16">
+        XXXXX X1XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <opp name="MUL">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <suf name="s">
+        XXXXX XX1XXXX XXXXXXX XXXXXX XXXXXXX
+      </suf>
+    </FU>
+    <FU name="SR">
+      <direction pos="1" dir="write" />
+      <size name="_16" default="true">
+        XXXXX X0XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <size name="_U16">
+        XXXXX X1XXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <opp name="SR">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="SRI">
+        <par pos="3" type="Imm" />
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="SL">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="SLI">
+        <par pos="3" type="Imm" />
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+    </FU>
+       <FU name="MOVE">
+     <direction pos="1" dir="write" />
+      <size name="_16" default="true">
+        XXXXX XXXXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <opp name="MV">
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+      <opp name="MVI">
+        <par pos="2" type="Imm" />
+        10000 XXXXXXX BBBBBBB 0BBBBB AAAAAAA
+      </opp>
+    </FU>
+    <FU name="BR">
+      <size name="_16" default="true">
+        10000 XXXXXXX XXXXXXX XXXXXX XXXXXXX
+      </size>
+      <opp name="BEQ" branch="true">
+	      <lat value="2"/>
+	      <direction pos="1" dir="read" />
+        10000 XXXXXXX XAAAAAA 0BBBBC CCCCCCC
+      </opp>
+      
+      <opp name="JLA" branch="true">
+        <direction pos="1" dir="read" />
+        <lat value="4" />
+        10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA
+      </opp>
+    </FU>
+  </FU-define>
+</processor>
