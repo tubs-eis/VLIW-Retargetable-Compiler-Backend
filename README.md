@@ -67,7 +67,7 @@ Each Micro Operation (MO) is assigned a weight and the MO with the highest weigh
 
 
 
-### Compile Process
+### Compilation
 
 To compile the project, please run `compile_example.sh` .
 
