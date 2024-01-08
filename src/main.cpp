@@ -335,7 +335,6 @@ int main(int argc, char **argv) {
     diff.tv_sec -= 1;
   }
 
-  ass.writeOutInstructionTransitions(std::cout);
   LOG_OUTPUT(LOG_M_ALWAYS, "Total Time: %8ld.%03ld sec\n", diff.tv_sec,
              diff.tv_nsec / 1000000);
   cout << "Total Time: " << diff.tv_sec << "." << diff.tv_nsec / 1000000

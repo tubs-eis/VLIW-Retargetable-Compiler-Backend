@@ -106,13 +106,15 @@
       <size name="_16" default="true">
         10000 XXXXXXX XXXXXXX XXXXXX XXXXXXX
       </size>
-      <opp name="BEQ" branch="true">
+      <opp name="BEQ" branch="true" condition="true">
 	      <lat value="2"/>
+        <par pos="1" type="Label" />
 	      <direction pos="1" dir="read" />
         10000 XXXXXXX XAAAAAA 0BBBBC CCCCCCC
       </opp>
       
       <opp name="JLA" branch="true">
+      <par pos="1" type="Label" />
         <direction pos="1" dir="read" />
         <lat value="4" />
         10000 XXXXXXX BBBBBBB CCCCCC AAAAAAA

@@ -9,7 +9,7 @@
 
 mkdir build
 cd build/
-cmake 
+cmake ..
 make -j 4
 
 cd ..

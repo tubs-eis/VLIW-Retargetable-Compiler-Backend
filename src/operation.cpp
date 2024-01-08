@@ -829,7 +829,7 @@ char *Operation::generateArgument(const char *line, char32_t *value,
     return final;
   }
   final = label::parseLabel((char *)line + i, value);
-  if (final != NULL && value >= 0) {
+  if (final != NULL && value != NULL) {
     *type = LabelAddr;
     return final;
   }
