@@ -59,7 +59,7 @@ The assembly is described in `base.xml`.
 Instructions can be grouped into functional units and the instruction encoding is provided.
 
 An example program is provided in `assembly.asm`. 
-In the assembly virtual register will be allocated in the register allocation process.
+In the assembly virtual register (VxRn for virtual register n) will be allocated in the register allocation process to a physical register (V0R0, i.e. register 0 of register-file partition 0).
 Physical register are used to transfer information across basic block borders.
 
 The `mlweights.txt` file describes an alternative scheduling for instruction scheduling.
