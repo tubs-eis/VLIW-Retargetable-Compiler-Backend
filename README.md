@@ -22,7 +22,9 @@ The VLIW retargetable compiler backend is described in the following paper. If y
 > Instruction Scheduling, Operation Merging, and Register Allocation in VLIW Compilers”. In:
 > Journal of Signal Processing Systems 92.7 (2020), pp. 655–678. issn: 1939-8115. doi: 10.1007/s11265-019-01493-2
 
-
+#### New Features for Energy-aware register allocation (January 2024)
+The VLIW retargetable compiler backend 
+[kurz paper beschreiben ]
 
 ## Table of Contents
 
@@ -65,6 +67,9 @@ Physical register are used to transfer information across basic block borders.
 The `mlweights.txt` file describes an alternative scheduling for instruction scheduling.
 Each Micro Operation (MO) is assigned a weight and the MO with the highest weights are scheduled first.
 
+todo:
+#### Energy-aware Register Allocation (January 2024)
+[kurz konfiguration beshreiben]
 
 
 ### Compilation
