@@ -39,10 +39,19 @@ endif ()
 
 ####
 # Build flags
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(IS_MACOS TRUE)
+    set(CMAKE_C_COMPILER "/opt/homebrew/opt/llvm/bin/clang")
+    set(CMAKE_CXX_COMPILER "/opt/homebrew/opt/llvm/bin/clang++")
+endif()
 
-set(CMAKE_CXX_FLAGS_RELEASE "-g2 -Wall -O3 -lrt -Werror=return-type")
-set(CMAKE_CXX_FLAGS_DEBUG "-pedantic -ggdb -Wall -O0 -lrt -fno-omit-frame-pointer -fsanitize=address -static-libstdc++ -Werror=return-type")
-set(CMAKE_CXX_FLAGS_PROFILE "-pedantic -ggdb -Wall -O3 -lrt -fno-omit-frame-pointer -DNDEBUG")
+if(NOT IS_MACOS)
+    set(LRT_FLAG "-lrt")
+endif()
+
+set(CMAKE_CXX_FLAGS_RELEASE "-g2 -Wall -O3 ${LRT_FLAG} -Werror=return-type")
+set(CMAKE_CXX_FLAGS_DEBUG "-pedantic -ggdb -Wall -O0 ${LRT_FLAG} -fno-omit-frame-pointer -fsanitize=address -static-libstdc++ -Werror=return-type")
+set(CMAKE_CXX_FLAGS_PROFILE "-pedantic -ggdb -Wall -O3 ${LRT_FLAG} -fno-omit-frame-pointer -DNDEBUG")
 
 # to install: sudo apt-get install libboost-all-dev
 set(Boost_USE_STATIC_LIBS ON)
@@ -53,8 +62,13 @@ INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
 #set(PYBIND11_CPP_STANDARD -std=c++1z)
 
 execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-message(STATUS "Using G++ version " ${GCC_VERSION})
-if (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
+message(STATUS "Using ${CMAKE_CXX_COMPILER_ID} version " ${GCC_VERSION})
+if (IS_MACOS)
+    message(STATUS "macOS detected. Using c++14 standard")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++14 -lstdc++")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++14 -lstdc++")
+    set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_PROFILE} -std=c++14 -lstdc++")
+elseif (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
     message(STATUS "GCC Version >= 4.9 Using c++14 standard")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -std=c++14")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -std=c++14")
@@ -74,6 +88,18 @@ set(BUILD_SHARED_LIBRARIES OFF)
 
 ####
 # OpenMP Support
+if(APPLE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(OpenMP_CXX "${CMAKE_CXX_COMPILER_ID}")
+        set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -lomp")
+        set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+
+
+        set(OpenMP_libomp_LIBRARY "/usr/local/opt/libomp/lib")
+        set(OpenMP_libgomp_LIBRARY "/usr/local/opt/libomp/lib")
+        set(OpenMP_libiomp5_LIBRARY "/usr/local/opt/libomp/lib")
+    endif()
+endif()
 
 set(OpenMP_pthread_LIBRARY -lpthread)
 find_package(OpenMP)
