@@ -5,7 +5,6 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
-
 #ifndef SCHEDULER_POPULATIONENERGYALLOCATION_H
 #define SCHEDULER_POPULATIONENERGYALLOCATION_H
 
@@ -180,7 +179,7 @@ public:
         std::ofstream s;
         s.open(ss.str()); // + "_individual" + string(i));
         s << "----- [ SLM 1] ---------------------------------------- " << endl;
-        _ins->printInstructions(s, registerMap);
+        _ins->writeOutInstructions(s, registerMap);
         s.close();
 
         releaseVirtualMap(&registerMap);

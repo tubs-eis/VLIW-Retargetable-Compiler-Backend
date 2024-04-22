@@ -13,6 +13,7 @@
 #include "MI.h"
 #include "SLM.h"
 #include "gen_sched.h"
+#include "opts.h"
 #include "processor.h"
 #include "sched_stats.h"
 #include "utility.h"
@@ -111,6 +112,20 @@ Program *gen_sched::scheduleSLM(sched_chromosome *individual, SLM *slm,
   }
 
   Program *instructions = alg->scheduleMOs(processor, notScheduableCSCR);
+  // for reinforcement scheduling check, print actual used weights
+  // todo: remvoe comments for typical applicaiton with clean logs
+  //  if (!params.fileSlmWeights.empty() or !params.slmWeights.empty()) {
+  if (instructions) {
+    if (params.application_mode) {
+      instructions->writeOutScheduledWeight(cout, slm->getOriginalID());
+    } else {
+      slm->initErrorMessage(instructions);
+    }
+  }else {
+    slm->initErrorMessage(nullptr);
+  }
+
+  //  }
   if (instructions) {
     if (slm->getBranchOperation()) {
       // alg->insertBranch(processor, *instructions, slm->getBranchOperation());
@@ -399,11 +414,11 @@ void gen_sched::printPopulation(std::vector<sched_chromosome *> *population,
         if (params.instructionModelFile == "") {
           LOG_OUTPUT(LOG_M_ALWAYS,
                      "%s generation %2d SLM %3d indiv %3d "
-                     "fit/bestFitness/pJ/InstrTrans "
-                     "%7d/%4d/%4.4f/%d "
+                     "fit/pJ/InstrTrans "
+                     "%7d/%4.4f/%d "
                      "size %2d origin %-9s",
                      ctx.asString().c_str(), generation, slm_id, n,
-                     chrm->getFitness().getFitness(), minsize,
+                     chrm->getFitness().getFitness(),
                      chrm->getTransitionEnergy(),
                      chrm->getInstructionTransitions(), chrm->sched_size,
                      SchedGeneOrigin::toString(chrm->origin).c_str());
@@ -411,11 +426,11 @@ void gen_sched::printPopulation(std::vector<sched_chromosome *> *population,
           // instruction model used
           LOG_OUTPUT(LOG_M_ALWAYS,
                      "%s generation %2d SLM %3d indiv %3d "
-                     "fit/bestFitness/pJ/InstrTrans/InstrPower "
-                     "%7d/%4d/%4.4f/%d/%4.4f "
+                     "fit/pJ/InstrTrans/InstrPower "
+                     "%7d/%4.4f/%d/%4.4f "
                      "size %2d origin %-9s",
                      ctx.asString().c_str(), generation, slm_id, n,
-                     chrm->getFitness().getFitness(), minsize,
+                     chrm->getFitness().getFitness(),
                      chrm->getTransitionEnergy(),
                      chrm->getInstructionTransitions(),
                      InstructionModel::getInstance().generateInstructionEnergy(
@@ -651,6 +666,8 @@ bool gen_sched::abortCondition(int maxRounds, int &noImprovement, bool killed,
 
 int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
                                          const Context &ctx) {
+
+  int num_alones = 0;
   slm->calculateGraph(pro, true);
   LOG_OUTPUT(isLog(LOG_M_SCHED) || params.printSchedPopulation,
              "%s Starting genetic scheduling for SLM %d (op count: %lu, "
@@ -685,6 +702,8 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
         initialise_from_weights(number, &seed, partProb, slm);
     scheduleWithHeuristicReg(individual, slm, pro, params.enableRASkip, -1,
                              Context::Schedule(ctx, 0, 0));
+    num_alones = individual->getAloneCount();
+
     if (individual->getHeuristicRegister() != 0)
       performGeneticRegisterAllocation(individual, slm, pro,
                                        Context::Schedule(ctx, 0, 0));
@@ -719,6 +738,23 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
     maxweight = get_max_weight(individual, number);
     scheduleWithHeuristicReg(individual, slm, pro, params.enableRASkip, -1,
                              Context::Schedule(ctx, 0, 0));
+    num_alones = individual->getAloneCount();
+
+    // if heuristic reg Alloc fails, try genetic reg allocation if it is enabled
+    // (only relevant for portReg > 0)
+    if (individual->getHeuristicRegister() != 0 and params.portReg > 0) {
+      int failedRegsIntern = 0;
+      gen_sched::registerAllocation(slm, pro, individual->instructions,
+                                    &individual->map, &individual->couplings,
+                                    failedRegsIntern,
+                                    Context::nextStage(ctx, "first"));
+      individual->setGeneticRegister(failedRegsIntern);
+      if (failedRegsIntern == 0) {
+        individual->setFitness(individual->sched_size);
+        slm->setInstructionAndMap(&individual->instructions, &individual->map);
+      }
+    }
+
     population->at(0) = individual;
 
     //        individual = initialise_from_weights(number, seed, partProb, slm,
@@ -728,8 +764,24 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
     //        startIndex = 2;
   } else {
     sched_chromosome *individual = initialise(number, maxweight, 0, 0, &seed);
+    num_alones = individual->getAloneCount();
     scheduleWithHeuristicReg(individual, slm, pro, params.enableRASkip, -1,
                              Context::Schedule(ctx, 0, 0));
+    // if heuristic reg Alloc fails, try genetic reg allocation if it is enabled
+    // (only relevant for portReg > 0)
+    if (individual->getHeuristicRegister() != 0 and params.portReg > 0) {
+      int failedRegsIntern = 0;
+      gen_sched::registerAllocation(slm, pro, individual->instructions,
+                                    &individual->map, &individual->couplings,
+                                    failedRegsIntern,
+                                    Context::nextStage(ctx, "first"));
+      individual->setGeneticRegister(failedRegsIntern);
+      if (failedRegsIntern == 0) {
+        individual->setFitness(individual->sched_size);
+        slm->setInstructionAndMap(&individual->instructions, &individual->map);
+      }
+    }
+
     population->at(0) = individual;
   }
 #pragma omp parallel for
@@ -960,6 +1012,7 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
                individual->getFitness().getFitness());
     if (individual->sched_size < last_best_size ||
         individual->sched_size > last_best_size) {
+      num_alones = individual->getAloneCount();
       last_best_size = individual->sched_size;
       last_best_fitness = individual->getFitness().getFitness();
       LOG_OUTPUT(LOG_M_SCHED_DETAIL,
@@ -971,6 +1024,7 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
         i = 0;
     } else if (individual->sched_size == last_best_size &&
                individual->getFitness().getFitness() < last_best_fitness) {
+      num_alones = individual->getAloneCount();
       last_best_fitness = individual->getFitness().getFitness();
       LOG_OUTPUT(LOG_M_SCHED_DETAIL,
                  "%s Improvement in scheduling in round %d for SLM %d to "
@@ -1008,6 +1062,7 @@ int gen_sched::legacy_genetic_scheduling(SLM *slm, Processor *pro,
   sched_chromosome *final = population->front();
   slm->setHeuristicRegisterFitness(final->getHeuristicRegister());
   slm->setGeneticRegisterFitness(final->getGeneticRegister());
+  params.alone_count = num_alones;
 
   for (uint x = 0; x < population->size(); x++) {
     sched_chromosome *individual = population->at(x);
@@ -1551,8 +1606,8 @@ int gen_sched::power_genetic_scheduling(SLM *slm, Processor *pro,
       if (instr) {
         if (map) {
           stringstream ss;
-          //          instr->printInstructions(ss, map, false);
-          instr->printInstructionsCompilable(ss, map);
+          //          instr->writeOutInstructions(ss, map, false);
+          instr->writeOutInstructionsCompilable(ss, map);
           LOG_OUTPUT(LOG_M_ALWAYS, ss.str().c_str());
         }
       }

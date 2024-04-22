@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "global.h"
 #include <fstream>
 #include <iostream>
@@ -40,6 +41,12 @@ using namespace std;
 struct regex_replacement {
   string pattern;
   string replacement;
+#ifdef __APPLE__
+  boost::regex regex;
+  regex_replacement(const char *before, const char *after)
+      : pattern(before), replacement(after), regex(before) {}
+
+#else
 #ifndef GCCREGEX
   boost::regex regex regex_replacement(const char *before, const char *after)
       : pattern(before), replacement(after) {
@@ -50,12 +57,16 @@ struct regex_replacement {
   regex_replacement(const char *before, const char *after)
       : pattern(before), replacement(after), regex(before) {}
 #endif
+#endif
 };
-
+#ifdef __APPLE__
+vector<regex_replacement> replacements;
+#else
 #ifndef GCCREGEX
 map<boost::regex, string> replacements;
 #else
 vector<regex_replacement> replacements;
+#endif
 #endif
 
 std::vector<SLM *> convert(string ASM, Processor *pro) {
@@ -180,9 +191,18 @@ std::vector<SLM *> convert(string ASM, Processor *pro) {
         slms.push_back(actualSLM);
         actualSLM = new SLM();
       }
-      char32_t LabelID;
-      label::parseLabel(tmp, &LabelID);
-      actualSLM->setLabel(LabelID);
+      try {
+        char32_t LabelID;
+        label::parseLabel(tmp, &LabelID);
+        actualSLM->setLabel(LabelID);
+      } catch (std::runtime_error &e) {
+        cerr << e.what() << endl;
+        cerr << "Could not register label " << tmp << " in line " << i << endl;
+        cerr << "Be aware that the L_NOT_SCHEDULE comparison is limited to the "
+                "substring 'NOT_SCHEDULE'."
+             << endl;
+        EXIT_ERROR
+      }
       continue;
     }
     tmpMO =
@@ -245,14 +265,31 @@ string regExReplacement(string ASM) {
   istringstream input(ASM);
 
   try {
+#ifndef __APPLE__
 #ifndef GCCREGEX
     for (std::map<boost::regex, string>::iterator it = replacements.begin();
          it != replacements.end(); ++it) {
       ASS_NOTE_COUT("'" << it->first << "' -> '" << it->second << "'" << endl);
     }
 #endif
+#endif
     while (input.getline(line, BUFFER_SIZE)) {
       s = string(line);
+#ifdef __APPLE__
+      for (std::vector<regex_replacement>::iterator it = replacements.begin();
+           it != replacements.end(); ++it) {
+#if REGEX_REPLACE_VERBOSE
+        cout << "Attempting regex_replace:" << endl;
+        cout << "  regex:        '" << it->pattern << "'" << endl;
+        cout << "  replacement:  '" << it->replacement << "'" << endl;
+        cout << "  input string: '" << s << "'" << endl;
+#endif
+        s = boost::regex_replace(s, it->regex, it->replacement);
+#if REGEX_REPLACE_VERBOSE
+        cout << "  replaced:     '" << s << "'" << endl;
+#endif
+
+#else
 #ifndef GCCREGEX
       for (std::map<boost::regex, string>::iterator it = replacements.begin();
            it != replacements.end(); ++it) {
@@ -273,6 +310,7 @@ string regExReplacement(string ASM) {
         s = std::regex_replace(s, it->regex, it->replacement);
 #if REGEX_REPLACE_VERBOSE
         cout << "  replaced:     '" << s << "'" << endl;
+#endif
 #endif
 #endif
       }

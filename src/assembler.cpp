@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #define SETDEBUG                                                               \
   1 // SETDEBUG must be set in ONE file before including global.h.
 
@@ -31,11 +32,39 @@ void Assembler::writeOutCompilableAssembler(std::ostream &out) const {
 }
 
 void Assembler::writeOutInstructionTransitions(std::ostream &out) const {
-  out << "Total Instruction Transitions " << endl;
+  out << "Total Instruction Transitions" << endl;
   for (auto slm : slms) {
-    out << "SLM " << slm->getID() << " = "
+    out << "SLM " << slm->getID() << " "
         << slm->getShortestInstruction()->getInstructionTransitions() << endl;
   }
+}
+
+void Assembler::writeCsvOutput(SLM *slm, bool error) const {
+  if (params.asmfile == nullptr or params.stats_file.length() == 0) {
+    return;
+  }
+
+  std::ofstream outfile;
+  std::string path(params.asmfile);
+  std::string filebasename = path.substr(path.find_last_of("/\\") + 1);
+
+  outfile.open(params.stats_file, std::ios::out | std::ios::app);
+  if (error) {
+    // get scheduling length, if o1 was enabled and scheduling error happened
+
+    int notScheduableCSCR;
+    outfile << filebasename << ";" << slm->getOriginalID() << ";" << -1 << ";"
+            << slm->getOperations()->size() << ";" << params.alone_count
+            << "\n";
+
+  } else {
+    outfile << filebasename << ";" << slm->getOriginalID() << ";"
+            << slm->getSize() << ";" << slm->getOperations()->size();
+    outfile << ";" << params.alone_count;
+    outfile << "\n";
+  }
+
+  outfile.close();
 }
 
 void Assembler::setASM(char *ASMFile) {
@@ -58,28 +87,6 @@ void Assembler::setASM(char *ASMFile) {
   setASM(str);
 }
 
-void Assembler::writeCsvOutput(SLM *slm, bool error) {
-  /// Schreib here
-  std::ofstream outfile;
-  std::string path(params.asmfile);
-  std::string filebasename = path.substr(path.find_last_of("/\\") + 1);
-
-  if (params.stats_file.length() == 0) {
-    return;
-  }
-
-  outfile.open(params.stats_file, std::ios::out | std::ios::app);
-  if (error) {
-    outfile << filebasename << ";" << slm->getOriginalID() << ";" << -1 << ";"
-            << slm->getOperations()->size() << "\n";
-  } else {
-    outfile << filebasename << ";" << slm->getOriginalID() << ";"
-            << slm->getSize() << ";" << slm->getOperations()->size() << "\n";
-  }
-
-  outfile.close();
-}
-
 Assembler::Assembler(char *configFile) {
   // reset counter to dereference IDs
   int ID_SEP = std::numeric_limits<int>::max() / MAX_THREAD_COUNT;
@@ -97,11 +104,30 @@ Assembler::Assembler(char *configFile) {
   }
 }
 
+Assembler::Assembler(Processor *pro) {
+  // reset counter to dereference IDs
+  int ID_SEP = std::numeric_limits<int>::max() / MAX_THREAD_COUNT;
+  for (int i = 0; i < MAX_THREAD_COUNT; ++i) {
+    MI::counter[i] = ID_SEP * i;
+    MO::counter[i] = ID_SEP * i;
+    SLM::counter[i] = ID_SEP * i;
+  }
+  scheduled = false;
+  this->pro = pro;
+  this->owns_processor = false;
+  // ASS_DEBUG_COUT(*pro << std::endl);
+  if (!pro->isValid()) {
+    cerr << "this is not a valid representation of an processor." << std::endl;
+    EXIT_ERROR
+  }
+}
+
 Assembler::~Assembler() {
   for (auto it = slms.begin(); it != slms.end(); ++it) {
     delete *it;
   }
-  delete pro;
+  if (owns_processor)
+    delete pro;
 }
 
 void Assembler::setASM(string ASMcode) {
@@ -198,9 +224,14 @@ int simpleCompile(SLM *slm, Processor *pro, const Context &ctx) {
                                       failedRegs,
                                       Context::nextStage(ctx, "first"));
       }
-      slm->setInstructions(&instructions, &map);
-      if (failedRegs != 0)
+      if (failedRegs != 0) {
         f += failedRegs * failedRegs + NON_SCHEDULEABLE_VIRTUAL_ALLOC_OFFSET;
+        // for debugging purposes, print program
+        instructions->writeOutInstructions(std::cout, nullptr, false);
+        std::cout << "Failed Register Allocation: " << failedRegs << std::endl;
+      }
+      slm->setInstructions(&instructions, &map);
+
       slm->collectInstructionsFromThreads();
     } else {
       f = NON_SCHEDULEABLE_OFFSET + notScheduableCSCR;
@@ -278,12 +309,10 @@ void Assembler::compileSLM(int id) {
   if (slm->getShortestInstruction() == NULL &&
       slm->getOperations()->size() != 0) {
     stringstream ss;
-    ss << "ERROR: could not schedule slm " << slm->getOriginalID()
-       << " starting from line "
-       << slm->getOperations()->front()->getLineNumber() << endl;
+    ss << "ERROR: could not schedule slm " << slm->getOriginalID() << endl;
     slm->releaseRegisterMapping();
     writeCsvOutput(slm, true);
-    throw runtime_error(ss.str());
+    throw runtime_error(ss.str() + slm->error_string);
     //    EXIT_ERROR
   }
 

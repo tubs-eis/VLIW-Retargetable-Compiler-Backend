@@ -169,7 +169,7 @@ allocateEnergyRegister(size_t popSize, Program *ins, VirtualRegisterMap *map,
   auto tempMapping =
       generationManager.getBestIndividual().getVirtualRegisterMap();
 
-  //  ins->printInstructions(cout, tempMapping, true);
+  //  ins->writeOutInstructions(cout, tempMapping, true);
 
   for (auto &it : *tempMapping) {
     map->insert(std::pair<const char32_t, VirtualRegisterMapping *>(it.first,

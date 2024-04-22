@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef OPERATION_H
 #define OPERATION_H 1
 
@@ -14,7 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <vector>
-//#include <unordered_map>
+// #include <unordered_map>
 
 #include "global.h"
 #include "rapidxml-1.13/rapidxml.hpp"
@@ -39,7 +40,7 @@ static std::string OPtypeStr[] = {"Error", "REG",   "Immediate",
 #define READ 1
 #define WRITE 2
 #define READWRITE 3
-//#define READWRITEPSEUDOREADWRITE 15
+// #define READWRITEPSEUDOREADWRITE 15
 #define READWRITEPSEUDOREAD 7
 #define PSEUDOPART 12
 #define PSEUDOREAD 4
@@ -199,7 +200,7 @@ public:
    *
    * @return The latency in cycles.
    */
-  int getLatency() { return latency; }
+  int getLatency() const { return latency; }
 
   /** @brief Sets the latency for this operation
    *

@@ -16,3 +16,4 @@ get_current_git_commit.sh
 */venv/*
 GenerationEval/.idea/
 GenerationEval/__pycache__/
+*.DS_Store

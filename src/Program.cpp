@@ -5,13 +5,14 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "Program.h"
 #include "../powerEstimation/TransitionEnergyEstimator.h"
 #include "MI.h"
 
-void Program::printInstructions(std::ostream &out,
-                                const VirtualRegisterMap *mapping,
-                                bool printEnergy) const {
+void Program::writeOutInstructions(std::ostream &out,
+                                   const VirtualRegisterMap *mapping,
+                                   bool printEnergy) const {
   double totalEnergy = 0;
   if (printEnergy) {
     TransitionEnergyEstimator energyEstimator;
@@ -33,7 +34,7 @@ void Program::printInstructions(std::ostream &out,
   }
 }
 
-void Program::printInstructionsCompilable(
+void Program::writeOutInstructionsCompilable(
     std::ostream &out, const VirtualRegisterMap *mapping) const {
 
   int assemblerLine = 0;
@@ -43,6 +44,16 @@ void Program::printInstructionsCompilable(
 
     mi->writeOutCompilable(out, mapping);
   }
+}
+
+void Program::writeOutScheduledWeight(std::ostream &out, int SLM_ID) const {
+  out << "#header: MO_ID ALONE_BIT" << endl;
+  out << "SLM " << SLM_ID << endl;
+  for (auto it = begin(); it != end(); ++it) {
+    auto mi = *it;
+    mi->writeOutScheduledWeight(out);
+  }
+  out << "END SLM " << SLM_ID << endl;
 }
 
 uint Program::getInstructionTransitions() const {

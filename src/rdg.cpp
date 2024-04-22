@@ -5,11 +5,12 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "rdg.h"
 #include "portOptimalReg.h"
 #include <fstream>
 
-//#include "PortOptimalReg/Chromosome.h"
+// #include "PortOptimalReg/Chromosome.h"
 
 namespace rdg {
 
@@ -79,7 +80,7 @@ static void writeoutInfeasibleRDG(RDG *rdg, const std::string &message) {
 RDG *RDG::analyseRegisterDependencies(Program *instructions,
                                       RegisterCoupling *couplings,
                                       VirtualRegisterMap *map,
-                                      ass_reg_t *blocked) {
+                                      ass_reg_t *blocked, bool delOnError) {
 #if DEBUG_INFEASIBLE_RDG
   CURRENT_PROG = instructions;
   copyBlocked(blocked);
@@ -87,28 +88,29 @@ RDG *RDG::analyseRegisterDependencies(Program *instructions,
 
   LOG_OUTPUT(LOG_M_RDG_DEBUG, "[RDG] Computing RDG for SLM:\n");
   if (isLog(LOG_M_RDG_DEBUG)) {
-    instructions->printInstructions(cout, nullptr);
-    //    Program::printInstructions(instructions);
+    stringstream ss;
+    instructions->writeOutInstructions(ss, nullptr);
+    LOG_OUTPUT(LOG_M_RDG_DEBUG, ss.str().c_str());
   }
 
   auto rdg = new RDG(map->size());
 
   LOG_OUTPUT(LOG_M_RDG_DETAIL | LOG_M_REG_ENERGY_DEBUG,
              "[RDG] Recording Register Couplings:\n");
-  if (!rdg->recordRegisterCouplings(couplings)) {
+  if (!rdg->recordRegisterCouplings(couplings) & delOnError) {
     delete rdg;
     return 0;
   }
   LOG_OUTPUT(LOG_M_RDG_DETAIL | LOG_M_REG_ENERGY_DEBUG,
              "[RDG] Analyzing instructions:\n");
-  if (!rdg->analyseInstructions(instructions, map)) {
+  if (!rdg->analyseInstructions(instructions, map) & delOnError) {
     delete rdg;
     return 0;
   }
   rdg->compress();
   LOG_OUTPUT(LOG_M_RDG_DETAIL | LOG_M_REG_ENERGY_DEBUG,
              "[RDG] Checking feasibility\n");
-  if (!rdg->checkFeasibility(instructions, map, blocked)) {
+  if (!rdg->checkFeasibility(instructions, map, blocked) & delOnError) {
     delete rdg;
     return 0;
   }
@@ -149,14 +151,16 @@ bool RDG::analyseInstructions(Program *instructions, VirtualRegisterMap *map) {
       mi->writeOutReadable(cout, 0);
 
     MO *mo1 = mi->getOperations()[0];
-    MO *mo2;
+    MO *mo2 = nullptr;
     if (mo1) {
       if (mo1->opLengthMultiplier() < (int)mi->getNumberIssueSlots())
         mo2 = mi->getOperations()[1];
-      else
-        mo2 = 0;
-    } else
-      mo2 = mi->getOperations()[1];
+    } else {
+      if ((int)mi->getNumberIssueSlots() > 1) {
+        mo2 = mi->getOperations()[1];
+      }
+    }
+
     if (mo1)
       countReadRegisters(mo1);
     if (mo2)
@@ -290,6 +294,7 @@ bool RDG::checkFeasibility(Program *instructions, VirtualRegisterMap *map,
              freeRegCount);
 
   int liveRegs = 0;
+  int lineNumber = 0;
   for (auto miIt = instructions->begin(); miIt != instructions->end(); ++miIt) {
     std::set<char32_t> dying;
 
@@ -309,6 +314,7 @@ bool RDG::checkFeasibility(Program *instructions, VirtualRegisterMap *map,
       if (!checkReadPorts(registerArgs, registerCount, maxReadPorts, argIdx)) {
         LOG_OUTPUT(LOG_M_RDG | LOG_M_REG_ENERGY,
                    "Too few read ports -> deleting RDG\n");
+        params.best_sched_length = lineNumber;
         delete[] freeRegs;
 #if DEBUG_INFEASIBLE_RDG
         writeoutInfeasibleRDG(this, "Using too many read ports in MI " +
@@ -333,9 +339,11 @@ bool RDG::checkFeasibility(Program *instructions, VirtualRegisterMap *map,
                                       mi->to_string() + ")");
 #endif
 
+      params.best_sched_length = lineNumber;
       delete[] freeRegs;
       return false;
     }
+    lineNumber++;
   }
   delete[] freeRegs;
   return true;

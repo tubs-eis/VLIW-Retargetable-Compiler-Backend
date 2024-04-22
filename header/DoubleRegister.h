@@ -11,6 +11,9 @@
 
 #include <cstdlib>
 #include <utility>
+#ifdef __APPLE__
+typedef unsigned int uint;
+#endif
 
 /**
  * Bit Vector containing blocked register.

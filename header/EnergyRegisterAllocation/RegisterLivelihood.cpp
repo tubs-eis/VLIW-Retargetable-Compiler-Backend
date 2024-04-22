@@ -73,8 +73,8 @@ RegisterLivelihood::RegisterLivelihood(const Program *ins,
 
 void RegisterLivelihood::createVirtualRegisters() {
   //  cout << "Scheduled Instruction to Register Allocate:" << std::endl;
-  //  ins->printInstructions(cout, nullptr);
-  //  ins[0].printInstructions(ins, nullptr);
+  //  ins->writeOutInstructions(cout, nullptr);
+  //  ins[0].writeOutInstructions(ins, nullptr);
   //  cout << endl;
   for (auto &key : *map) {
     auto firstOccurence = key.second->getFirstOccurrence();

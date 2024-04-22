@@ -37,7 +37,7 @@ void PopulationEnergyAllocation::sort() {
 
 void PopulationEnergyAllocation::evaluate() {
 
-  //#pragma omp parallel for
+  // #pragma omp parallel for
   for (auto &ind : _individuals) {
     ind.evaluate(_ins);
   }
@@ -47,7 +47,7 @@ void PopulationEnergyAllocation::evaluate() {
 
 void PopulationEnergyAllocation::evaluateNonCopy() {
 
-  //#pragma omp parallel for
+  // #pragma omp parallel for
   for (size_t i = COPY; i < COPY + COMBINE + RANDOM; ++i) {
     EnergyChromosome &c = _individuals[i];
     if (true) {

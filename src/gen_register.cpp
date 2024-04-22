@@ -247,13 +247,17 @@ int gen_reg::genetic(ass_reg_t *blocked, Processor *pro, Program *ins,
                best._chromosomeFitness.transitionEnergy);
 
     if (population->front() < best) {
+      auto population_front_fitness =
+          population->front()._chromosomeFitness.getFitness();
+      auto population_front_transitionEnergy =
+          population->front()._chromosomeFitness.getTransitionEnergy();
       LOG_OUTPUT(
           LOG_M_RA_DEBUG,
           "[genetic][RA] found better Individual: %d\tCumulative "
           "TransitionPower[pJ]:%f -> %d\tCumulative TransitionPower[pJ]:%f  \n",
           best._chromosomeFitness.getFitness(),
-          best._chromosomeFitness.transitionEnergy, population->front(),
-          population->front());
+          best._chromosomeFitness.transitionEnergy, population_front_fitness,
+          population_front_transitionEnergy);
       noImprovementRounds = 0;
       best = population->front();
     }

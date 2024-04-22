@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef SLM_H
 #define SLM_H 1
 
@@ -36,20 +37,21 @@ class SLM {
 private:
   /** all microoperations in this SLM. */
   vector<MO *> *ops;
+  int numAlones = -1;
 
   MO *branchOperation;
 
-  //#if defined(_OPENMP)
-  //        /** \brief Lock variable for adding the last instruction.
-  //         *
-  //         * Since the genetic algorithm runs in parallel and multiple
-  //         instances may want to add their results,
-  //         * this lock will prevent them from having race conditions when
-  //         comparing for the shortest number of instructions.
-  //         * it is likely never going to happen, but better safe than sorry.
-  //         */
-  //        omp_lock_t addLastInsLock;
-  //#endif
+  // #if defined(_OPENMP)
+  //         /** \brief Lock variable for adding the last instruction.
+  //          *
+  //          * Since the genetic algorithm runs in parallel and multiple
+  //          instances may want to add their results,
+  //          * this lock will prevent them from having race conditions when
+  //          comparing for the shortest number of instructions.
+  //          * it is likely never going to happen, but better safe than sorry.
+  //          */
+  //         omp_lock_t addLastInsLock;
+  // #endif
   /** @the Label before this SLM
    * if there was none, this is NULL
    */
@@ -121,6 +123,9 @@ private:
   int _registerGeneticFit;
 
 public:
+  std::string error_string = "";
+  uint _heuristic_sched_max_blocked_regs = 0;
+
   void setInstructionAndMap(Program **ins, VirtualRegisterMap **map);
 
   /** a static counter to give every SLM its own ID. */
@@ -150,6 +155,10 @@ public:
    */
   SLM();
   ~SLM();
+
+  void setNumAlones(int numAlones) { this->numAlones = numAlones; }
+  int getNumAlones() const { return numAlones; }
+
   void releaseMIs();
   /** @brief adds an MO to the SLM
    * the List of MO to execute is extended by the given MO
@@ -396,6 +405,7 @@ public:
 
   void writeOutTransitionPowerEstimate(std::ostream &out);
   void calculateTransitionEnergy();
+  void initErrorMessage(Program *ins);
 };
 
 int getMONum(const std::vector<MO *> *ops, int i);

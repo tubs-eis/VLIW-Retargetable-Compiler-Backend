@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef REGISTER_H
 #define REGISTER_H 1
 
@@ -46,7 +47,7 @@ class MO;
  *
  */
 namespace registers {
-//#define ass_reg_t char32_t
+// #define ass_reg_t char32_t
 /**
  * Bit Vector containing blocked register.
  */
@@ -148,6 +149,15 @@ unsigned int getNumRegister1RF();
  */
 char32_t createRegister(int regFile, int regNumber);
 
+/** \brief Returns the register file number of the given register.
+ *
+ * For Special registers their register number or 0 is returned.
+ * Virtual registers return -1
+ * @param [in] ID The ID of a register.
+ * @return The register file number or -1.
+ */
+void getPhysicalRegister(char32_t ID, int *regFile, int *regNumber);
+
 /** \brief Checks two register for equality.
  *
  * Since FIR-registers decode in their ID the art of addressing them,
@@ -207,6 +217,9 @@ bool isValidX2Pair(MO *mo, int index);
 bool isPhysicalRegister(char32_t ID);
 
 bool isBlockedRegister(const ass_reg_t *blocked);
+
+int getDotID(const char32_t arg);
+int getDotOffset();
 
 } // namespace registers
 extern unsigned int numRegisterFiles;

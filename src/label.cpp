@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "label.h"
 #include "global.h"
 #include <iostream>
@@ -27,8 +28,8 @@ void registerSLM(char32_t labelID, SLM *slm) {
   if (it != slms.end() && it->second == slm)
     return;
   if (it != slms.end()) {
-    LOG_OUTPUT(LOG_M_ALWAYS, "You can't register a label twice!\n");
-    EXIT_ERROR
+    // not_schedule cuts off everything after the label, so we can't register
+    throw std::runtime_error("You can't register a label twice!");
   }
   slms.insert(std::make_pair(labelID, slm));
 }
@@ -87,7 +88,7 @@ char *parseLabel(char *labelname, char32_t *ID) {
   if (!strncmp(
           labelname + offset, "NOT_SCHEDULE",
           12)) { // we want to ignore this one, because we never jump to it.
-    *ID = -1;
+    ID = NULL;
     return labelname + offset + 12;
   }
 

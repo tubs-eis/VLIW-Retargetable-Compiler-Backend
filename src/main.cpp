@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include <fstream>
 #include <iostream>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 
 #include <time.h>
 
+#include "Parallel.h"
 #include "assembler.h"
 #include "moai_special.h"
 #include "opts.h"
@@ -203,6 +205,13 @@ int main(int argc, char **argv) {
   killed = false;
   /// INIT
   opts(argc, argv);
+
+  // lib mode (application off) breaks with multithreading
+  // its needed for error localization
+  params.application_mode = (params.threads > 1) &&
+                            (params.optimization > 1 || params.mergeLevel > 0);
+  //  params.useLineNumbers = false;
+
   Assembler ass(params.config);
   ass.setASM(params.asmfile);
   if (params.portReg == -1) {
@@ -223,19 +232,8 @@ int main(int argc, char **argv) {
   if (params.sched_stats)
     SchedulingStats::init(params.sched_stats);
 
-    /// THREADLIMIT
-#ifdef _OPENMP
-  omp_set_nested(0);
-  // limit the number of threads in parallel
-  if (params.threads > MAX_THREAD_COUNT) {
-    LOG_OUTPUT(LOG_M_ALWAYS, "This program supports at most %d threads!\n",
-               MAX_THREAD_COUNT);
-    params.threads = MAX_THREAD_COUNT;
-  }
-  if (params.threads != 0) {
-    omp_set_num_threads(params.threads);
-  }
-#endif
+  set_parallelism();
+
   ass.preScheduling(specialInit);
 
   ass.preScheduling(virtualRenaming);
@@ -257,15 +255,22 @@ int main(int argc, char **argv) {
     ass.preScheduling(writeOutOps);
   }
 
+  //  if (params.dot != nullptr) {
+  //    std::ofstream dot;
+  //    dot.open(params.dot);
+  //    ass.writeOutDot(dot);
+  //    dot.close();
+  //  }
+
+  // initialisation for the virtual register allocation.
+  ass.preScheduling(virtual_init);
+
   if (params.dot != nullptr) {
     std::ofstream dot;
     dot.open(params.dot);
     ass.writeOutDot(dot);
     dot.close();
   }
-
-  // initialisation for the virtual register allocation.
-  ass.preScheduling(virtual_init);
 
   if (params.nonAllocReadable) {
     std::ofstream readable(params.nonAllocReadable);
@@ -320,6 +325,12 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (!params.fileSlmWeights.empty()) {
+    for (auto slm : ass.getSLMS()) {
+      cout << "SLM=" << slm->getID() << "; Length=" << slm->getSize() << endl;
+    }
+  }
+
   if (!params.dotAsmLineFile.empty()) {
     std::ofstream dotGraphWeightFileStream(params.dotAsmLineFile,
                                            std::ofstream::out);
@@ -335,6 +346,7 @@ int main(int argc, char **argv) {
     diff.tv_sec -= 1;
   }
 
+  ass.writeOutInstructionTransitions(cout);
   LOG_OUTPUT(LOG_M_ALWAYS, "Total Time: %8ld.%03ld sec\n", diff.tv_sec,
              diff.tv_nsec / 1000000);
   cout << "Total Time: " << diff.tv_sec << "." << diff.tv_nsec / 1000000

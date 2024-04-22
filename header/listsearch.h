@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef GenSearch_H
 #define GenSearch_H
 
@@ -16,6 +17,7 @@
 class MO;
 class Processor;
 class MI;
+class SLM;
 namespace gen_sched {
 class sched_chromosome;
 }

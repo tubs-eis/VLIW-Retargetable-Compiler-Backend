@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef MO_H
 #define MO_H 1
 
@@ -233,11 +234,8 @@ public:
    *
    * A Pointer to the array of arguments used by this MO is returned. Altering
    * them will directly affect the MO.
-   * Mapping of arg.
-   * 0 = write port
-   * 1 = src0
-   * 2 = src1
-   * 3 = x
+   * The arguments map the src0,src1 arguments to the proper
+   * register/virtualregs Mapping of arg. 0 = write port 1 = src0 2 = src1 3 = x
    * 4 = 2. write port (MAC  uses this)
    * 5 = src0 2. read port (X2)
    * 6 = src1 2. read port (X2)
@@ -333,7 +331,7 @@ public:
   }
 
   void writeOutCompilable(ostream &out,
-                          const VirtualRegisterMap *mapping = 0) const {
+                          const VirtualRegisterMap *mapping = nullptr) const {
     op->writeOutCompilable(out, this, mapping);
   }
 
@@ -368,6 +366,30 @@ public:
     return ss.str();
   }
 
+  /**
+   * This method is used in dot graph generation to keep track of alive
+   * registers of the MAC operation (both read/write register).
+   * @return
+   */
+  string getRegisterString() {
+    stringstream ss;
+    //    std::vector<int> ports =
+    std::string prefix = "w=";
+    for (int i : {0, 4, 1, 2, 5, 6}) {
+      switch (types[i]) {
+      case OPtype::REG:
+        ss << prefix << registers::getName(arg[i]) << "+";
+        break;
+      default:
+        break;
+      }
+      if (i == 4) {
+        prefix = "r=";
+      }
+    }
+    return ss.str();
+  }
+
   void setParting(bool par) { parting = par; }
 
   bool isParting() const { return parting; }
@@ -394,12 +416,18 @@ public:
 
   bool isSMVtoAllCondselFlag() const { return SMVtoAllCondselFlag; }
 
+  bool isImm() const {
+    return (types[2] == OPtype::Immediate || types[2] == OPtype::Imm32);
+  }
+
   bool operator==(const MO &param) const { return param.id == id; }
   bool operator!=(const MO &param) const { return param.id != id; }
 
   bool isWriteReg(int argIdx);
   bool isVirtualWriteArg(int argIdx);
   bool isPhysicalWriteArg(int argIdx);
+
+  const RegisterCouple *isCoupledWriteArg(const rdg::RDG *rdg) const;
 
   void setOperation(Operation *operation);
 
@@ -447,7 +475,9 @@ public:
   std::vector<MO *> *getWeakFollowingFlags() { return &weakFollowingFlags; }
   void writeOutDot(ostream &out,
                    gen_sched::sched_chromosome *schedChromosome = nullptr,
-                   int index = 0);
+                   int index = 0, const rdg::RDG *rdg = nullptr,
+                   const VirtualRegisterMap *map = nullptr);
+  std::string get_register_info();
   MO *copy();
 
   /** \brief Setter if scheduling could be done.
@@ -484,6 +514,8 @@ public:
   bool isOnLongestPath() const { return onLongesPath; }
 
   bool hasFollower(const string &name);
+
+  void _draw_dot_physical_register_from_previous_iteration(ostream &out);
 };
 
 #endif

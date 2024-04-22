@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "processor.h"
 #include "../header/memory.h"
 #include "global.h"
@@ -213,7 +214,7 @@ void Processor::initialize(char *configFile) {
 
 Processor::Processor(char *configFile) {
   binSize = 0;
-  name = "EIS-VLIW";
+  name = "tukuturi";
   issueSlots = 0;
   X2Support = false;
   allOps = NULL;
@@ -269,6 +270,9 @@ bool Processor::isNotParallelMOs(const MO *mo1, const MO *mo2) const {
 }
 
 bool Processor::isNotParallelMemorySystemAccess(MI *ins) const {
+  if (ins->getNumberIssueSlots() == 1) {
+    return true; // no parallel MOs
+  }
   MO *mo1 = ins->getOperations()[0];
   MO *mo2 = ins->getOperations()[1];
   if (isNotParallelMOs(mo1, mo2)) {
@@ -425,14 +429,16 @@ bool Processor::isExecuteable(MI *ins) const {
           if (writePorts[regfile]-- == 0) {
             if (op->isReorderable()) {
               LOG_OUTPUT(LOG_M_CHECK_EXEC,
-                         "trying to access to many write ports %d: ", regfile);
+                         "[proc] trying to access to many write ports %d: \n",
+                         regfile);
               if (isLog(LOG_M_CHECK_EXEC))
                 ins->writeOutReadable(cout);
               return false;
             } else {
-              LOG_OUTPUT(LOG_M_ALWAYS,
-                         "[line %d] trying to access too many write ports\n",
-                         op->getLineNumber());
+              LOG_OUTPUT(
+                  LOG_M_ALWAYS,
+                  "[proc] [line %d] trying to access too many write ports\n",
+                  op->getLineNumber());
               EXIT_ERROR
             }
           }
@@ -530,3 +536,31 @@ bool Processor::isExecuteable(MI *ins) const {
 }
 
 int Processor::getIssueSlotNumber() const { return issueSlots; }
+
+std::string Processor::convertFU2CSV() const {
+  // map of FU name to count
+  std::map<std::string, int> fuCount;
+  // map fu name to latency
+  std::map<std::string, int> fuLatency;
+  if (Units.size() != 1) {
+    throw std::runtime_error(
+        "Only one VectorUnit is supported. Please check your config file.");
+  }
+  for (auto unit : *Units[0]->getUnits()) {
+    auto op = unit->getAllOperations()->begin();
+    if (fuCount.find(unit->getFUname()) == fuCount.end()) {
+      fuCount[unit->getFUname()] = 1;
+      fuLatency[unit->getFUname()] = unit->getLatency();
+    } else {
+      fuCount[unit->getFUname()]++;
+    }
+  }
+
+  // iterate through fus and export FU;count;latency
+  std::string csv = "FU;count;latency\n";
+  for (auto fu : fuCount) {
+    csv += fu.first + ";" + std::to_string(fu.second) + ";" +
+           std::to_string(fuLatency[fu.first]) + "\n";
+  }
+  return csv;
+}

@@ -5,12 +5,14 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "virtual_reg.h"
 #include "CompilerContext.h"
 #include "SLM.h"
 #include "functionalunit.h"
 #include "gen_merging.h"
 #include "gen_register.h"
+#include "global.h"
 #include "label.h"
 #include "portOptimalReg.h"
 #include "processor.h"
@@ -152,6 +154,11 @@ void virtualRegisterGraph(SLM *slm, Processor *pro) {
 
 void virtual_init(SLM *slm, Processor *pro) {
   // initialization of all blocked registers. (only done once)
+  if (blocked) {
+    free(blocked);
+    blocked = nullptr;
+    blockedRegsInSLM.clear();
+  }
   if (blocked == nullptr) {
     blocked = (ass_reg_t *)malloc(sizeof(ass_reg_t) *
                                   registers::getNumRegisterFiles());
@@ -513,6 +520,7 @@ bool checkMapping(VirtualRegisterMap *map, VirtualAllocation *regMapping,
       }
       testOps[x] = new MO(m->getOperation(), m->getArguments(), m->getTypes(),
                           m->getDirections());
+      testOps[x]->setLineNumber(m->getLineNumber());
       x += m->opLengthMultiplier();
     }
     // if we can not execute one operation with the given mapping, it is
@@ -686,13 +694,26 @@ void calculateCouplings(Program *ins, VirtualRegisterMap *map,
     unsigned int slot = 0;
     if (isLog(LOG_M_RA_PREP)) {
       LOG_OUTPUT(LOG_M_RA_PREP, "Computing register _couplings for MI:\n");
-      mi->writeOutReadable(cout);
+      stringstream ss;
+      mi->writeOutReadable(ss);
+      ss << std::endl;
+      LOG_OUTPUT(LOG_M_RA_PREP, ss.str().c_str());
     }
     while (slot < MI::getNumberIssueSlots()) {
       MO *mo = mi->getOperations()[slot];
       if (mo == nullptr) { // the operation is not (yet) set.
         slot++;
         continue;
+      }
+      if (isLog(LOG_M_RA_PREP)) {
+        stringstream ss;
+        ss << "Computing register _couplings for MO:";
+        mo->writeOutReadable(ss);
+        ss << std::endl;
+        LOG_OUTPUT(LOG_M_RA_PREP, ss.str().c_str());
+      }
+      if (mo->getID() == 0) {
+        int n = 3;
       }
       char32_t *args = mo->getArguments();
       OPtype *types = mo->getTypes();
@@ -734,6 +755,9 @@ void calculateCouplings(Program *ins, VirtualRegisterMap *map,
           }
           // at this point we have a virtual register.
           updatePosition(map, args[e], e, it);
+          LOG_OUTPUT(LOG_M_RA_PREP, "  Update register  %s with ID=%d\n",
+                     registers::getName(args[e]).c_str(),
+                     it.operator*()->getOperation(0)->getID());
         }
       }
       slot += mo->opLengthMultiplier();
@@ -755,10 +779,10 @@ void freeMappings(vector<VirtualRegisterMapping *> *map,
       // decrease by one, otherwise there is an error inside the vector.
       mit--;
 
-#ifdef VERBOSE_REGISTER_ALLOC
-      LOG_OUTPUT(LOG_M_RA_DEBUG, registers::getName(m->virt).c_str());
+#if VERBOSE_REGISTER_ALLOC
+      LOG_OUTPUT(LOG_M_RA_DEBUG, registers::getName(m->getVirtual()).c_str());
       LOG_OUTPUT(LOG_M_RA_DEBUG, " -> ");
-      LOG_OUTPUT(LOG_M_RA_DEBUG, registers::getName(m->real).c_str());
+      LOG_OUTPUT(LOG_M_RA_DEBUG, registers::getName(m->getReal()).c_str());
       LOG_OUTPUT(LOG_M_RA_DEBUG, " ");
 #endif
     }
@@ -884,12 +908,51 @@ bool preallocateCoupled(const std::vector<VirtualRegisterMapping *> &map,
   return true;
 }
 
-//#define VERBOSE_REGISTER_ALLOC 1
+std::string get_error_localization(MI *instruction, int line, SLM *slm) {
+  auto mo0 = instruction->getOperations()[0];
+  MO *mo1 = nullptr;
+  if (instruction->getNumberIssueSlots() > 1) {
+    MO *mo1 = instruction->getOperations()[1];
+  }
+  int id = mo0->getID();
+
+  std::stringstream ss;
+  ss << "Failed: ";
+  ss << "\nSLM=" + std::to_string(slm->getOriginalID()) +
+            "; Failed=" + std::to_string(id);
+  if (mo1) {
+    id = mo1->getID();
+    ss << "," + std::to_string(id);
+  }
+  ss << ";Line=" + std::to_string(line) + "\n";
+  instruction->writeOutReadable(ss);
+  return ss.str();
+}
+
+void print_error_message(MI *instruction, int line, SLM *slm) {
+  // do not execute this function with parallelism, will cause exceptions
+  if (params.application_mode) {
+    if (params.debugging) {
+      instruction->writeOutReadable(cout);
+      std::string result_str = get_error_localization(instruction, line, slm);
+      std::cout << result_str;
+    }
+  } else {
+
+    std::string result_str = get_error_localization(instruction, line, slm);
+    slm->error_string += result_str;
+    if (params.debugging) {
+      std::cout << result_str;
+    }
+  }
+}
 
 uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                       const Program *ins, VirtualRegisterMap *map,
                       const RegisterCoupling *couplings, int *freeReg,
                       const Context &ctx, SLM *slm) {
+  uint max_concurrent_blocked = 0;
+  uint init_blocked = getNumBlockedRegs(blocked);
 
   std::vector<MI *>::const_iterator *dynFreeRegs =
       new std::vector<MI *>::const_iterator[registers::getNumRegister1RF() *
@@ -949,6 +1012,8 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
   }
 
   // go through whole program and allocate register
+  int line = 0;
+  bool firstError = true;
   for (auto insPtr = ins->begin(); insPtr != ins->end(); ++insPtr) {
     MI *instruction = (*insPtr);
 
@@ -960,15 +1025,28 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                "instruction:\n\t",
                ctx.asString().c_str());
     if (isLog(LOG_M_RA_DEBUG)) {
-      instruction->writeOutReadable(cout);
-      LOG_OUTPUT(LOG_M_RA_DEBUG, "\t");
-      instruction->writeOutReadable(cout, map);
+      stringstream ss;
+      instruction->writeOutReadable(ss);
+      LOG_OUTPUT(LOG_M_RA_DEBUG, "%s\t", ss.str().c_str());
+      ss.str("");
+      ss.clear();
+      instruction->writeOutReadable(ss, map);
+      LOG_OUTPUT(LOG_M_RA_DEBUG, "%s", ss.str().c_str());
       LOG_OUTPUT(LOG_M_RA_DEBUG,
                  "[vreg] [allocate_virtual] Blocked registers:\n");
       printBlockedRegisters(blocked, freeReg);
     }
 
+    max_concurrent_blocked =
+        std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
+
     if (!checkMapping(map, nullptr, pro, insPtr, insPtr)) {
+      print_error_message(instruction, line, slm);
+      if (not params.application_mode) {
+        slm->error_string +=
+            "Cannot allocate virtual registers. I don't even try...\n";
+      }
+
       LOG_OUTPUT(
           LOG_M_RA_DEBUG,
           "[vreg] %s Cannot allocate virtual registers. I don't even try...\n",
@@ -1007,6 +1085,8 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
             // could not be allocated last time OR already allocated
             continue;
           }
+          max_concurrent_blocked =
+              std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
 
           auto coupleIter = couplings->find(args[argIdx]);
           if (coupleIter != couplings->end()) {
@@ -1027,6 +1107,9 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                          registers::getName(couple->second).c_str());
               return NON_SCHEDULEABLE_VIRTUAL_ALLOC_OFFSET;
             }
+            max_concurrent_blocked =
+                std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
+
             Program::iterator last_occurence;
             if (coupleMapping->getLastOccurrence() >
                 mapping->getLastOccurrence())
@@ -1057,8 +1140,18 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                       LOG_M_RA_DEBUG,
                       "[vreg] [allocate_virtual] %s could not be mapped\n",
                       mapping->getVirtualName().c_str());
+
+                  print_error_message(instruction, line, slm);
+                  if (not params.application_mode) {
+                    slm->error_string += mapping->getVirtualName().c_str();
+                    slm->error_string += " could not be mapped\n";
+                  }
+
                   break;
                 }
+                max_concurrent_blocked = std::max(max_concurrent_blocked,
+                                                  getNumBlockedRegs(blocked));
+
                 LOG_OUTPUT(LOG_M_RA_DEBUG,
                            "[vreg] [allocate_virtual] allocated %s to %s\n",
                            registers::getName(couple->first).c_str(),
@@ -1108,15 +1201,17 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                       registers::getRegFile(mapping->getReal()) + 1,
                       registers::getRegNumber(mapping->getReal())));
                 }
+                max_concurrent_blocked = std::max(max_concurrent_blocked,
+                                                  getNumBlockedRegs(blocked));
               } else {
                 LOG_OUTPUT(LOG_M_RA_DEBUG,
                            "[vreg] [allocate_virtual] %s could not be mapped\n",
                            registers::getName(mapping->getVirtual()).c_str());
               }
             }
-#ifdef VERBOSE_REGISTER_ALLOC
+#if VERBOSE_REGISTER_ALLOC
             if ((int)mapping->getReal() >= 0 &&
-                (int)couplemapping->getReal() >= 0) {
+                (int)coupleMapping->getReal() >= 0) {
               fprintf(params.logFile,
                       registers::getName(mapping->getVirtual()).c_str());
               fprintf(params.logFile, " -> ");
@@ -1124,10 +1219,10 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                       registers::getName(mapping->getReal()).c_str());
               fprintf(params.logFile, " ");
               fprintf(params.logFile,
-                      registers::getName(couplemapping->getVirtual()).c_str());
+                      registers::getName(coupleMapping->getVirtual()).c_str());
               fprintf(params.logFile, " -> ");
               fprintf(params.logFile,
-                      registers::getName(couplemapping->getReal()).c_str());
+                      registers::getName(coupleMapping->getReal()).c_str());
               fprintf(params.logFile, " ");
             }
 #endif
@@ -1145,6 +1240,8 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
               mapping->setReal(-2);
               coupleMapping->setReal(-2);
               nonMappableRegisters += 2;
+
+              print_error_message(instruction, line, slm);
             }
           } else {
             LOG_OUTPUT(
@@ -1157,12 +1254,20 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
             // allocation for single virtual registers.
             mapping->setReal(getFreeReg(freeReg, blocked, usedWritePorts.get(),
                                         mapping->getRegFile(), usedummy));
+            max_concurrent_blocked =
+                std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
             if (mapping->getReal() == (char32_t)-1) {
               mapping->setReal(-2);
               nonMappableRegisters++;
               LOG_OUTPUT(LOG_M_RA_DEBUG,
                          "[vreg] [allocate_virtual] %s could not be mapped\n",
                          registers::getName(mapping->getVirtual()).c_str());
+
+              print_error_message(instruction, line, slm);
+              if (not params.application_mode) {
+                slm->error_string += mapping->getVirtualName().c_str();
+                slm->error_string += " could not be mapped\n";
+              }
               continue;
             }
             LOG_OUTPUT(LOG_M_RA_DEBUG,
@@ -1202,6 +1307,13 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                   mapping->setReal(getFreeReg(
                       freeReg, blocked, usedWritePorts.get(), i, usedummy));
                   if (mapping->getReal() == (char32_t)-1) {
+                    print_error_message(instruction, line, slm);
+
+                    if (not params.application_mode) {
+                      slm->error_string += mapping->getVirtualName().c_str();
+                      slm->error_string += " could not be mapped\n";
+                    }
+
                     LOG_OUTPUT(
                         LOG_M_RA_DEBUG,
                         "[vreg] [allocate_virtual] %s could not be mapped\n",
@@ -1231,7 +1343,9 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                   regfile <= (int)registers::getNumRegisterFiles())
                 usedWritePorts[regfile] += 1;
             }
-#ifdef VERBOSE_REGISTER_ALLOC
+            max_concurrent_blocked =
+                std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
+#if VERBOSE_REGISTER_ALLOC
             if ((int)mapping->getReal() >= 0) {
               fprintf(params.logFile,
                       registers::getName(mapping->getVirtual()).c_str());
@@ -1257,6 +1371,8 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
                 }
               }
             }
+            max_concurrent_blocked =
+                std::max(max_concurrent_blocked, getNumBlockedRegs(blocked));
           }
           LOG_OUTPUT(LOG_M_RA_DEBUG, "[virtual test] mapping %s to %s\n",
                      registers::getName(mapping->getVirtual()).c_str(),
@@ -1265,19 +1381,20 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
       }
       slot += operation->opLengthMultiplier();
       if (isLog(LOG_M_RA_DEBUG)) {
-        LOG_OUTPUT(LOG_M_RA_DEBUG, "Blocked registers:\n");
+        LOG_OUTPUT(LOG_M_RA_DEBUG,
+                   "[vreg] [allocate_virtual] Blocked registers:\n");
         printBlockedRegisters(blocked, freeReg);
       }
     }
 //        if (!checkMapping(map, 0, pro, it, it)) {
 //            nonMappableRegisters++;
 //        }
-#ifdef VERBOSE_REGISTER_ALLOC
+#if VERBOSE_REGISTER_ALLOC
     LOG_OUTPUT(LOG_M_RA_DEBUG, "\nblocked registers: ");
     for (uint i = 0; i < registers::getNumRegisterFiles(); i++) {
       ass_reg_t reg = blocked[i];
       LOG_OUTPUT(LOG_M_RA_DEBUG, " ");
-      for (uint x = 0; x < registers::getNumRegisters(); x++) {
+      for (uint x = 0; x < registers::getNumRegister1RF(); x++) {
         LOG_OUTPUT(LOG_M_RA_DEBUG, "%d", (int)(1 & reg >> x));
       }
       LOG_OUTPUT(LOG_M_RA_DEBUG, " %2d", freeReg[i]);
@@ -1285,19 +1402,27 @@ uint allocate_virtual(ass_reg_t *blocked, const Processor *pro,
     LOG_OUTPUT(LOG_M_RA_DEBUG, "\n");
 #endif
     freeMappings(&mapVec, insPtr, blocked, freeReg);
-#ifdef VERBOSE_REGISTER_ALLOC
+#if VERBOSE_REGISTER_ALLOC
     LOG_OUTPUT(LOG_M_RA_DEBUG, "\nblocked registers: ");
     for (uint i = 0; i < registers::getNumRegisterFiles(); i++) {
       ass_reg_t reg = blocked[i];
       LOG_OUTPUT(LOG_M_RA_DEBUG, " ");
-      for (uint x = 0; x < registers::getNumRegisters(); x++) {
+      for (uint x = 0; x < registers::getNumRegister1RF(); x++) {
         LOG_OUTPUT(LOG_M_RA_DEBUG, "%d", (int)(1 & reg >> x));
       }
       LOG_OUTPUT(LOG_M_RA_DEBUG, " %2d", freeReg[i]);
     }
     LOG_OUTPUT(LOG_M_RA_DEBUG, "\n");
 #endif
+    line++;
   }
+  // std::cout << "MAX BLOCKED REGISTER = "
+  //           << max_concurrent_blocked - init_blocked << std::endl;
+  if (slm) {
+    slm->_heuristic_sched_max_blocked_regs =
+        max_concurrent_blocked - init_blocked;
+  }
+
   delete[] dynFreeRegs;
   return nonMappableRegisters;
 }
@@ -1316,21 +1441,17 @@ void insertIntoDistances(vector<VirtualRegisterMapping> *map) {
 void printBlockedRegisters(const ass_reg_t *blocked, int *freeReg) {
   for (uint i = 0; i < registers::getNumRegisterFiles(); i++) {
     LOG_OUTPUT(LOG_M_ALWAYS, " ");
-    cout << " ";
     ass_reg_t reg = blocked[i];
     for (uint x = 0; x < registers::getNumRegister1RF(); x++) {
       LOG_OUTPUT(LOG_M_ALWAYS, "%d", (int)(1 & reg >> x));
-      cout << (int)(1 & reg >> x);
       if (!((x + 1) % 4)) {
         LOG_OUTPUT(LOG_M_ALWAYS, ".");
-        cout << ".";
       }
     }
     if (freeReg) {
       LOG_OUTPUT(LOG_M_ALWAYS, " (%2d)", freeReg[i]);
     }
     LOG_OUTPUT(LOG_M_ALWAYS, "\n");
-    cout << endl;
   }
 }
 
@@ -1349,6 +1470,19 @@ std::vector<uint> getBlockedRegisters(const ass_reg_t *blocked) {
   }
 
   return blockedRegisters;
+}
+
+uint getNumBlockedRegs(const ass_reg_t *blocked) {
+  uint counter = 0;
+  for (uint i = 0; i < registers::getNumRegisterFiles(); i++) {
+    ass_reg_t reg = blocked[i];
+    for (uint x = 0; x < registers::getNumRegister1RF(); x++) {
+      if ((int)(1 & reg >> x) == 1) {
+        counter++;
+      }
+    }
+  }
+  return counter;
 }
 
 int heuristicRegisterAllocation(SLM *slm, Processor *pro, Program *ins,
@@ -1397,6 +1531,11 @@ int heuristicRegisterAllocation(SLM *slm, Processor *pro, Program *ins,
     // Prepare RDG for this SLM
     //    	LOG_OUTPUT(LOG_M_ALWAYS, "Preparing RDG\n");
     *rdg = rdg::RDG::analyseRegisterDependencies(ins, couplings, map, blocked);
+    if (!(*rdg) && !(ctx.schedRound() != -1 && ctx.schedIndiv() != -1)) {
+      slm->error_string += "RDG could not be created\n";
+      print_error_message(ins->getMI(params.best_sched_length),
+                          params.best_sched_length, slm);
+    }
   }
 
   // add transition Energy
@@ -1441,9 +1580,16 @@ int geneticRegisterAllocation(SLM *slm, Processor *pro, Program *ins,
       LOG_OUTPUT(LOG_M_RDG_STAT, "RDG for SLM %d completed.\n",
                  slm->getOriginalID());
     }
-    LOG_OUTPUT(LOG_M_RDG_STAT,
-               "RDG for SLM %d has %d roots for %lu registers\n",
-               slm->getOriginalID(), (*rdg)->rootCount(), map->size());
+    if (map) {
+      LOG_OUTPUT(LOG_M_RDG_STAT,
+                 "RDG for SLM %d has %d roots for %lu registers\n",
+                 slm->getOriginalID(), (*rdg)->rootCount(), map->size());
+    } else {
+      LOG_OUTPUT(LOG_M_RDG_STAT,
+                 "RDG for SLM %d has %d roots for unknown registers\n",
+                 slm->getOriginalID(), (*rdg)->rootCount());
+    }
+
     if (isLog(LOG_M_RDG_DEBUG)) {
       printRDG(slm, ins, map, *rdg);
       //            exit(-1);
@@ -1460,6 +1606,13 @@ int geneticRegisterAllocation(SLM *slm, Processor *pro, Program *ins,
                "%s Result of genetic port optimal register allocation for SLM "
                "%d: %d\n",
                ctx.asString().c_str(), slm->getOriginalID(), genret);
+
+    // write Failure of best register allocation to SLM->errorMessage
+    // it is a new error message, so that heuristic failure can be ignored!
+    if (genret == 0) {
+      slm->initErrorMessage(ins);
+    }
+
     return genret;
   }
   return -1;
@@ -1521,6 +1674,7 @@ int virtual_test(SLM *slm, Processor *pro, Program *ins,
   insertIntoDistances(map);
 #endif
   if (not gen_sched::successRA(ret)) {
+    slm->error_string += "Heuristic register allocation failed\n";
     ret = geneticRegisterAllocation(slm, pro, ins, couplings, *map, &rdg, ctx);
     slm->setGeneticRegisterFitness(ret);
     if (not gen_sched::successRA(ret))
@@ -1536,8 +1690,10 @@ bool virtual_schedule(SLM *slm, Processor *pro) {
     free(blocked);
     blocked = nullptr;
   }
-  ass_reg_t *b = blockedRegsInSLM.find(slm->getID())->second;
-  free(b);
+  if (blockedRegsInSLM.find(slm->getID()) != blockedRegsInSLM.end()) {
+    ass_reg_t *b = blockedRegsInSLM.find(slm->getID())->second;
+    free(b);
+  }
   Program *ins = slm->getShortestInstruction();
   if (ins == nullptr)
     return true;
@@ -1559,6 +1715,13 @@ int detectHighestVirtual(SLM *slm) {
          registers::getNumRegister1RF();
 }
 
+/***
+ * Rename Virtual Register except for READWRITE register. They will not be
+ * renamed and destroy the SSA form.
+ * @param mo
+ * @param maps
+ * @param maxnumber
+ */
 void renameRegisters(MO *mo, unordered_map<char32_t, char32_t> &maps,
                      int &maxnumber) {
   char32_t *args = mo->getArguments();
@@ -1648,4 +1811,17 @@ void printVirtualRegisterMap(VirtualRegisterMap *map) {
     cout << registers::getName(it.first) << "-> ";
     cout << registers::getName(it.second->getReal()) << endl;
   }
+}
+
+int VirtualRegisterMapping::getFirstOccurenceID() {
+  if (first_occurrence == std::vector<MI *>::iterator()) {
+    return -1;
+  }
+  return (*first_occurrence)->getOperations()[0]->getID();
+}
+int VirtualRegisterMapping::getLastOccurenceID() {
+  if (last_occurrence == std::vector<MI *>::iterator()) {
+    return -1;
+  }
+  return (*last_occurrence)->getOperations()[0]->getID();
 }

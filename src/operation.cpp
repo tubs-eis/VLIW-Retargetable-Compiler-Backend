@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "operation.h"
 #include "MO.h"
 #include "functionalunit.h"
@@ -277,12 +278,20 @@ void Operation::writeOutReadable(ostream &out, const MO *m,
   // if the Instruction is merged from two instructions, then print out both
   // line numbers.
   if ((int)m->getSecondLineNumber() > 0) {
-    sprintf(buffer, "%d+%d", m->getLineNumber(), m->getSecondLineNumber());
+    if (params.useLineNumbers) {
+      sprintf(buffer, "%d+%d", m->getLineNumber(), m->getSecondLineNumber());
+    } else {
+      sprintf(buffer, "%d+%d", m->getID(), m->getSecondLineNumber());
+    }
     for (f = strlen(buffer); f < 9; f++)
       out << " ";
     out << buffer;
   } else {
-    out << std::setw(9) << std::setfill(' ') << m->getLineNumber();
+    if (params.useLineNumbers) {
+      out << std::setw(9) << std::setfill(' ') << m->getLineNumber();
+    } else {
+      out << std::setw(9) << std::setfill(' ') << m->getID();
+    }
   }
   // space between line numbers and instruction name.
   out << " " << std::setw(0) << name << " ";
@@ -386,6 +395,9 @@ void Operation::writeOutCompilable(ostream &out, const MO *m,
     case Label:
       sprintf(buffer, "%s", label::getLabelName(args[i]).c_str());
       out << buffer;
+      //      for (f = strlen(buffer); f < OPERANDLENGTH; f++) {
+      //        out << " ";
+      //      }
       break;
     case REG:
       if (args[i + 4] != 0 && args[i + 4] != args[i])
@@ -395,10 +407,15 @@ void Operation::writeOutCompilable(ostream &out, const MO *m,
       else
         sprintf(buffer, "%s", getMappedRegisterName(args[i], mapping).c_str());
       out << buffer;
+      //      for (f = strlen(buffer); f < OPERANDLENGTH; f++) {
+      //        out << " ";
+      //      }
       break;
     case Immediate:
       sprintf(buffer, "#0x%x", (uint)args[i]);
       out << buffer;
+      //      for (f = strlen(buffer); f < OPERANDLENGTH; f++)
+      //        out << " ";
       break;
     case Imm32:
       sprintf(end, "#0x%x", (uint)args[i]);
@@ -409,16 +426,33 @@ void Operation::writeOutCompilable(ostream &out, const MO *m,
       break;
     }
   }
+  //  if (end[0] != 0) {
+  //    // the space where the line number would normally be.
+  //    out << "          " << end;
+  //    for (f = strlen(end); f < (NAMELENGTH + 4 * OPERANDLENGTH); f++)
+  //      out << " ";
+  //  }
 }
 
 std::string Operation::to_string(MO *mo, VirtualRegisterMap const *mapping) {
   stringstream sstr;
 
-  if ((int)mo->getSecondLineNumber() > 0)
-    sstr << setw(4) << mo->getLineNumber() << "+" << setw(4)
-         << mo->getSecondLineNumber();
-  else
-    sstr << setw(9) << mo->getLineNumber();
+  if ((int)mo->getSecondLineNumber() > 0) {
+    if (params.useLineNumbers) {
+      sstr << setw(4) << mo->getLineNumber() << "+" << setw(4)
+           << mo->getSecondLineNumber();
+    } else {
+      sstr << setw(4) << mo->getID() << "+" << setw(4) << mo->getID();
+    }
+
+  } else {
+    if (params.useLineNumbers) {
+      sstr << setw(9) << mo->getLineNumber();
+    } else {
+      sstr << setw(9) << mo->getID();
+    }
+  }
+
   sstr << " " << setw(NAMELENGTH) << left << name << " ";
   OPtype *type = mo->getTypes();
   char32_t *args = mo->getArguments();
@@ -501,7 +535,7 @@ bool checkValidArguments(MO *mo, Processor *pro) {
     int imm = (((int)args[2] & ~FIR_OFF_MASK) >> FIR_OFF_LEN);
     int sign = ((int)args[2] >> (FIR_OFF_LEN - 1)) & 1;
     if (!((sign == 0 && imm == 0) || (sign == 1 && imm == -1) ||
-          (pro->getProcessorName() != "EIS-VLIW" && args[2] == 64))) {
+          (pro->getProcessorName() != "kavuaka" && args[2] == 64))) {
       LOG_OUTPUT(LOG_M_ALWAYS, "FIR offset value too big!\n");
       return false;
     }

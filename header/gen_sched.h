@@ -106,6 +106,16 @@ public:
   }
   int getGeneticEnergyRegister() { return geneticEnergyRegister; }
 
+  int getAloneCount() const {
+    int count = 0;
+    for (int i = 0; i < sched_size; i++) {
+      if (alone[i]) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   ~sched_chromosome() {
     releaseVirtualMapping();
     releaseCouplings();

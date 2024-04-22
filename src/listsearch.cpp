@@ -5,16 +5,18 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "listsearch.h"
 #include "MI.h"
-#include "ML_schedule.h"
 #include "MO.h"
 #include "SLM.h"
+#include "WeightImport.h"
 #include "gen_sched.h"
 #include "global.h"
 #include "processor.h"
 #include "register.h"
 #include <algorithm>
+#include <set>
 
 void ListSearch::insertInOrder(entry &e, std::list<entry> *list) {
   // as a general rule it is, that branch operations are handeled by a greater
@@ -75,35 +77,51 @@ ListSearch::ListSearch(SLM *slm, const Processor *processor,
   _schedulable_STORED = 0;
   std::list<entry> *list = new std::list<entry>();
   if (!individual) {
-    if (params.fileMLModel != "") {
-      // std::vector<int> mlWeights = getMLWeights(mos, slm->getID(),
-      // params.fileMLModel);
-      std::map<int, int> weightMap =
-          getMLWeights(mos, slm->getID(), params.fileMLModel);
+    if (params.fileSlmWeights != "" or params.slmWeights != "") {
+      std::map<int, bool> alone;
+      std::map<int, bool> parting;
+      std::vector<int> mo_ordering = importSLMWeights(
+          mos, slm->getID(), params.fileSlmWeights, alone, parting);
 
-      // int counter = 0;
-      // for (std::vector<MO *>::iterator it = mos->begin(); it != mos->end();
-      // it++) { std::cout << mlWeights[counter] << " " << (*it)->getWeight() <<
-      // "\t" << std::endl; counter++;
-      // }
+      std::vector<int> already_added_ids;
+
+      std::map<int, int> mapping;
+      for (int i = 0; i < mos->size(); i++) {
+        auto mo = (*mos)[i];
+        auto id = mo->getID();
+        mapping[id] = i;
+      }
 
       int mo_counter = 0;
-
-      for (std::vector<MO *>::iterator it = mos->begin(); it != mos->end();
-           it++) {
+      int max_weight = mos->size();
+      // iterate through mos and assign alone and parting bits
+      for (int mo : mo_ordering) {
         // for (std::map<int, int>::iterator it = weightMap; it !=
         // weightMap.end(); it++) {
         entry e;
-        e.mo = *it;
+        e.mo = mos->at(mapping[mo]);
+        already_added_ids.push_back(mo);
         // e.value = mlWeights[mo_counter];
-        if (weightMap.find(e.mo->getID()) == weightMap.end()) {
-          std::cout << "MO ID " << e.mo->getID() << " Nicht gefunden\n";
+        //        if (weightMap.find(e.mo->getID()) == weightMap.end()) {
+        //          //SLM weight does not contain a weight for this MO, for now
+        //          set the weight to 0, to give it a default schedule e.value
+        //          =0;
+        ////          std::cout << "MO ID " << e.mo->getID() << " not found\n";
+        ////          std::cout << params.slmWeights << std::endl << std::endl;
+        ////          std::cout << params.assembler_content << std::endl;
+        ////          exit(1);
+        //        }
+        e.value = max_weight;
+        max_weight--;
+
+        // set parting bit
+        if (parting.find(e.mo->getID()) != parting.end()) {
+          e.mo->setParting(parting[e.mo->getID()]);
         }
-        std::cout << e.mo->getID() << " " << weightMap[e.mo->getID()]
-                  << std::endl;
-        e.value = weightMap[e.mo->getID()];
 
         _moWeights[e.mo->getID()] = e.value;
+        if (alone[e.mo->getID()])
+          singles.insert(e.mo->getID());
         if (!e.mo->hasPrev() && !e.mo->hasWeakPrev() && !e.mo->hasPrevFlags() &&
             !e.mo->hasWeakPrevFlags()) {
           e.schedulable = true;
@@ -115,10 +133,36 @@ ListSearch::ListSearch(SLM *slm, const Processor *processor,
           schedulable.push_back(list);
           list = new std::list<entry>();
         }
-
         // mo_counter++;
       }
-    } else {
+      // add missing mos to list
+      if (mo_ordering.size() != mos->size()) {
+        list = new std::list<entry>();
+        for (std::vector<MO *>::iterator it = mos->begin(); it != mos->end();
+             it++) {
+          if (std::find(mo_ordering.begin(), mo_ordering.end(),
+                        (*it)->getID()) == mo_ordering.end()) {
+            entry e;
+            e.mo = *it;
+            e.value = max_weight;
+            max_weight--;
+            _moWeights[e.mo->getID()] = e.value;
+            if (!e.mo->hasPrev() && !e.mo->hasWeakPrev() &&
+                !e.mo->hasPrevFlags() && !e.mo->hasWeakPrevFlags()) {
+              e.schedulable = true;
+            } else {
+              e.schedulable = false;
+            }
+            insertInOrder(e, list);
+            if (e.mo->isParting()) {
+              schedulable.push_back(list);
+              list = new std::list<entry>();
+            }
+          }
+        }
+      }
+
+    } else { // regular scheduling (list heuristic)
       for (std::vector<MO *>::iterator it = mos->begin(); it != mos->end();
            it++) {
         entry e;
@@ -138,7 +182,7 @@ ListSearch::ListSearch(SLM *slm, const Processor *processor,
         }
       }
     }
-  } else {
+  } else { // Schedule chromosome
     int *weights = individual->weights;
     bool *partings = individual->partings;
     bool *alone = individual->alone;
@@ -306,6 +350,11 @@ Program *ListSearch::scheduleMOs(const Processor *processor,
     if (!_scheduleNow.empty()) {
       // We have operations that should be placed in the current MI, but did not
       // fit!
+      cout << "WARNING List search aborting!!!!!" << endl;
+      cout << "scheduleNow is empty" << endl;
+      for (auto mi : *instructions) {
+        mi->writeOutReadable(cout);
+      }
       delete instructions;
       instructions = nullptr;
       break; // exit while loop
@@ -313,11 +362,17 @@ Program *ListSearch::scheduleMOs(const Processor *processor,
 
     // when we go to the next MI, we can check which MO are becoming free now.
     if (!nextCycle(processor)) {
+      cout << "WARNING List search aborting!!!!!" << endl;
+      cout << "next Cycle processor is false" << endl;
+      for (auto mi : *instructions) {
+        mi->writeOutReadable(cout);
+      }
       delete instructions;
       instructions = nullptr;
       break; // exit while loop
     }
     instructions->push_back(currentMI);
+    currentMI->writeOutReadable(cout);
     currentMI = new MI();
 
     /* If no further MOs have to be placed, we break here, so we don't introduce
@@ -330,6 +385,13 @@ Program *ListSearch::scheduleMOs(const Processor *processor,
     // todo: why am I different than the other abort conditions?
     if (registers::getNumberOfCondselRegister() > 1) {
       if (instructions->size() > _moCount * 10) {
+        cout << "WARNING List search aborting!!!!!" << endl;
+        cout << "instruction size is 10x larger than moCount. Probably "
+                "scheduling an invalid node"
+             << endl;
+        for (auto mi : *instructions) {
+          mi->writeOutReadable(cout);
+        }
         delete instructions;
         instructions = nullptr;
         notSchedulableCSCR = 0;

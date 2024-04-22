@@ -199,6 +199,9 @@ static int fitness(Chromosome *chrm, Program *ins, VirtualRegisterMap *map,
 
     for (Instructions it = ins->begin(); it != ins->end(); ++it) {
       MI *mi = *it;
+      // due to the ability to access a register and write at the end of the
+      // cycle, I can write into a register I am reading without any issues.
+      freeRegisters(blocked, blockedCount, it, map, chrm->regMapping());
       allocateRegisters(mi, rdg, blocked, blockedCount, chrm, allocations);
       checkPortConflicts(mi, chrm, blockedCount, rdg);
       LOG_OUTPUT(LOG_M_RA_DEBUG, "[PortOptReg] [alloc] Conflicts so far: [");
@@ -208,7 +211,11 @@ static int fitness(Chromosome *chrm, Program *ins, VirtualRegisterMap *map,
       //        if (!checkMapping(map, chrm->regMapping(), pro, it, it))
       //            chrm->fitCounters().notExecutable++;
 
-      freeRegisters(blocked, blockedCount, it, map, chrm->regMapping());
+      // original location for freeRegisters, forbids writing into a register in
+      // the same cycle as the register is read. however this should not be an
+      // issue in HW, as the register is read at the beginning of the cycle and
+      // written at the end of the cycle.
+      //      freeRegisters(blocked, blockedCount, it, map, chrm->regMapping());
       if (extraReg0 < fit.extra_regs[0] || extraReg1 < fit.extra_regs[1]) {
         balance += abs(blockedCount[0] - blockedCount[1]);
       }
@@ -255,10 +262,14 @@ static void allocateRegisters(MI *ins, const RDG &rdg,
   LOG_OUTPUT(LOG_M_RA_DEBUG, "\n[PortOptReg] [alloc] Allocating virtual "
                              "registers for instruction:\n\t");
   if (isLog(LOG_M_RA_DEBUG)) {
-    ins->writeOutReadable(cout);
+    stringstream ss;
+    ins->writeOutReadable(ss);
+    LOG_OUTPUT(LOG_M_RA_DEBUG, "%s", ss.str().c_str());
     VirtualRegisterMap *mapping = fromVirtualAlloc(chrm->regMapping());
-    cout << "\t";
-    ins->writeOutReadable(cout, mapping);
+    //    ins->writeOutReadable(cout, mapping);
+    stringstream ss2;
+    ins->writeOutReadable(ss2, mapping);
+    LOG_OUTPUT(LOG_M_RA_DEBUG, "\t%s", ss2.str().c_str());
     releaseVirtualMap(&mapping);
     LOG_OUTPUT(LOG_M_RA_DEBUG, "[PortOptReg] [alloc] Blocked registers:\n");
     if (isLog(LOG_M_RA_DEBUG))
@@ -443,11 +454,16 @@ static void allocateRegisters(MI *ins, const RDG &rdg,
 }
 
 static void printMI(MI *ins, Chromosome *chrm) {
-  LOG_OUTPUT(LOG_M_ALWAYS, "\t");
-  ins->writeOutReadable(cout);
-  LOG_OUTPUT(LOG_M_ALWAYS, "\t");
+
+  stringstream ss;
+  ins->writeOutReadable(ss);
+  LOG_OUTPUT(LOG_M_ALWAYS, "\t%s", ss.str().c_str());
+
   VirtualRegisterMap *mapping = fromVirtualAlloc(chrm->regMapping());
-  ins->writeOutReadable(cout, mapping);
+  stringstream ss2;
+  ins->writeOutReadable(ss2, mapping);
+  LOG_OUTPUT(LOG_M_ALWAYS, "\t%s", ss2.str().c_str());
+  LOG_OUTPUT(LOG_M_ALWAYS, "\t%s", ss2.str().c_str());
   releaseVirtualMap(&mapping);
 }
 
@@ -775,6 +791,7 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
 
   Population *pop = Population::random(popSize, registerCount, &seed);
   pop->ownsIndividuals() = false;
+
   Chromosome *best = pop->evaluate(fitness, ins, map, rdg, blocked, pro);
 #if REG_GA_STATS
   for (size_t i = 0; i < popSize; ++i) {
@@ -782,6 +799,7 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
   }
 #endif
   int bestFitness = best->fitness();
+
   if (bestFitness == 0) {
     VirtualAllocation *regMapping = best->regMapping();
     if (regMapping) {
@@ -885,8 +903,11 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
 #pragma omp parallel for
     for (size_t i = 0; i < COMBINE + RANDOM; ++i) {
       Chromosome *c = pop->individual(COPY + i);
-      if (!c->isDuplicate())
+      if (!c->isDuplicate()) {
+        LOG_OUTPUT(LOG_M_RA_DEBUG, "\n[PortOptReg] Evaluating chromosome %lu",
+                   COPY + i);
         c->fitness() = c->evaluate(fitness, ins, map, rdg, blocked, pro);
+      }
     }
 
 #if REG_GA_STATS
@@ -929,7 +950,7 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
         newBest = true;
       }
       delete c->regMapping();
-      c->regMapping() = 0;
+      c->regMapping() = nullptr;
     }
 
     for (size_t i = COPY; i < popSize; ++i)
@@ -958,6 +979,14 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
 //    regGAStats[CURRENT_THREAD_NUM].printStats(cout);
 #endif
 
+  if (map) {
+    // for csv output log mi that fails
+    Chromosome *best_in = pop->individual(0);
+    Chromosome best_ind = Chromosome(*best_in);
+    LOG_OUTPUT(LOG_M_ALWAYS, "BEST CHROMOSOME CHECK!\n");
+    best_ind.evaluate(fitness, ins, map, rdg, blocked, pro);
+  }
+
   int fitness = bestFitness;
   LOG_OUTPUT(LOG_M_RA_SIZE_HIST, "Genetic RA ended with fitness %d\n", fitness);
   if (isLog(LOG_M_RA_SIZE_HIST)) {
@@ -972,6 +1001,7 @@ int allocateRegisters(int slm_id, const RDG &rdg, ass_reg_t *blocked,
   if (isLog(LOG_M_RA_ROUNDS_HIST))
     finishedRA(generation, fitness);
   flushLog();
+
   pop->releaseIndividuals();
   delete pop;
 
@@ -1070,7 +1100,6 @@ allocateRegistersPower(int slm_id, const RDG &rdg, ass_reg_t *blocked,
   //  uint seed = 500;
   uint seed = (unsigned int)time(0);
 
-  //  ins->printInstructions(std::cout);
   // debugging seed
   if (VIRTUAL_REGISTER_IN_SLM != 0) {
     LOG_OUTPUT(LOG_M_RA_DETAIL, "Entering SLM %d\n", slm_id);
@@ -1238,6 +1267,11 @@ Chromosome *Population::evaluate(FitnessFunction f, Program *ins,
                                  VirtualRegisterMap *map, const RDG &rdg,
                                  ass_reg_t *blockedRegisters, Processor *pro) {
   if (_size > 0) {
+    if (!map) {
+      // no register allocation available, return [0] (token result)
+      return _individuals[0];
+    }
+
     Chromosome *best = _individuals[0];
     best->evaluate(f, ins, map, rdg, blockedRegisters, pro);
 
@@ -1249,7 +1283,7 @@ Chromosome *Population::evaluate(FitnessFunction f, Program *ins,
     }
     return best;
   } else
-    return 0;
+    return nullptr;
 }
 
 bool &Population::ownsIndividuals() { return _ownsIndividuals; }

@@ -5,10 +5,11 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef HEADER_RDG_H_
 #define HEADER_RDG_H_
 
-//#include "MI.h"
+// #include "MI.h"
 
 #include "Program.h"
 #include "operation.h"
@@ -210,7 +211,8 @@ public:
   static RDG *analyseRegisterDependencies(Program *instructions,
                                           RegisterCoupling *couplings,
                                           VirtualRegisterMap *map,
-                                          ass_reg_t *blocked);
+                                          ass_reg_t *blocked,
+                                          bool delOnError = true);
 
   int rootCount() const;
   int virtualRegCount() const;

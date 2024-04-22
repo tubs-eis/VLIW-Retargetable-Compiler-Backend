@@ -14,6 +14,10 @@
 #include <string>
 #include <vector>
 
+#ifdef __APPLE__
+typedef unsigned int uint;
+#endif
+
 class Operation;
 
 namespace util {

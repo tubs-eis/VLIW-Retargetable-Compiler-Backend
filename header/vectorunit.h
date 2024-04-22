@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef VECTORUNIT_H
 #define VECTORUNIT_H 1
 
@@ -104,6 +105,9 @@ public:
     }
     return 0;
   }
+
+  // return Units
+  const std::vector<FunctionalUnit *> *getUnits() const { return &Units; }
 };
 
 #endif

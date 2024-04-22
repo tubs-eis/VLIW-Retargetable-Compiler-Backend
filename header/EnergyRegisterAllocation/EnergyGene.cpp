@@ -311,10 +311,14 @@ VirtualRegisterMapping *EnergyGene::getFirstCollision() {
       return result;
     }
   }
-  if (physicalCollisionIndex.empty()) {
-    return nullptr;
+  if (!physicalCollisionIndex.empty()) {
+    return virtualRegisters[physicalCollisionIndex[0]];
   }
-  return virtualRegisters[physicalCollisionIndex[0]];
+
+  if (!physicalCollisionIndexCoupled.empty()) {
+    return virtualRegisters[physicalCollisionIndexCoupled[0]];
+  }
+  return nullptr;
 }
 
 bool EnergyGene::calculateCollisions(bool verbose) {

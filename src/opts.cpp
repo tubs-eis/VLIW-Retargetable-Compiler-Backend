@@ -1,4 +1,3 @@
-
 // Copyright (c) 2022 Chair for Chip Design for Embedded Computing,
 //                    Technische Universitaet Braunschweig, Germany
 //                    www.tu-braunschweig.de/en/eis
@@ -6,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include <fstream>
 #include <getopt.h>
 #include <iostream>
@@ -82,9 +82,10 @@
 #define RA_REG_MUATION_GREEDY 1062
 #define RA_REG_POWER_EQUAL_THRESHOLD 1063
 #define RA_REG_INSTRUCTION_MODEL 1064
-// import scheduling heuristic
-#define SCHEDULE_ML_MODEL_WEIGHT_FILE 1065
+
+#define SLM_WEIGHTS_FILE 1065
 #define SCHEDULE_STATS_OUTPUT_FILE 1066
+#define FIX_DOT_GRAPH 1067
 
 bool CONSTANT::minPower;
 float CONSTANT::powerEqualThreshold;
@@ -273,16 +274,6 @@ static std::map<int, optionStruct> optionsPowerRegisterAllocation = {
 
 };
 
-static optionStruct FileMLModelOption{
-    "MLSchedulingWeights=FILE", "Weight of ML Model for List Scheduling. ",
-    "Will use ML based scheduling weights for List Scheduling.\n",
-    "Will use this file for ML weights in List scheduling: %s\n"};
-
-static optionStruct Schedule_StatsOption{
-    "StatsFile", "Filename/path where to save scheduling stats",
-    "Will use ML based scheduling weights for List Scheduling.\n",
-    "Write schedule stats to file: %s\n"};
-
 // static optionStruct MinPowerOptimization{
 //    "minPowerOptimization",
 //    "Power Optimization Target of Genetic Register Allocation. 1 to min power
@@ -300,6 +291,18 @@ static optionStruct PrintAsmLineOption{
     "graphWeights=", "Write out dot graph with MO ASM line numbers",
     "Will print .Dot-Graph weight of MOs in the Dot format.",
     "Will save .dot File in %s.\n"};
+
+static optionStruct optionSLMWeights{
+    "smlweights=FILE",
+    "Weight of ML Model for List Scheduling. SLM ID (starts with 1) next is "
+    "MO-ID, Weight (higher is scheduled earlier), optional alone (int > 0).",
+    "Will use ML based scheduling weights for List Scheduling.\n",
+    "Will use this file for ML weights in List scheduling: %s\n"};
+
+static optionStruct Schedule_StatsOption{
+    "StatsFile", "Filename/path where to save scheduling stats",
+    "Will log scheduling statistics in separate file.\n",
+    "Write schedule stats to file: %s\n"};
 
 void printHelpOpts(char *name) {
   printf("usage: \n%s [OPTIONS]\n", name);
@@ -342,8 +345,6 @@ void printHelpOpts(char *name) {
   printf("\t   -A | --optimizeAll\n\t\t All optimizations are switched on - "
          "short for -h -m -l\n");
   printf("\t Scheduling:\n");
-  printf(FileMLModelOption.printHelp().c_str());
-  printf(Schedule_StatsOption.printHelp().c_str());
   printf("\t   -o | --optimization=NUMBER\n\t\t define the optimization level. "
          "(default = 1)\n");
   printf("\t     0 = no optimization. code is parsed and written out.\n");
@@ -408,6 +409,8 @@ void printHelpOpts(char *name) {
          "rate curve.\n");
   printf("\t   --noMergeProb=NUMBER\n\t\t Probability for genes in first "
          "round's individuals to perform no merge.\n");
+  printf(optionSLMWeights.printHelp().c_str());
+  printf(Schedule_StatsOption.printHelp().c_str());
   printf("\t Register Allocation:\n");
   printf("\t   --noHeuristicReg\n\t\t Disable heuristic register allocation. "
          "You should enable one of the other register allocation methods when "
@@ -577,13 +580,9 @@ void opts(int argc, char **argv) {
        PRINT_COMPILABLE_ASSEMBLER},
       {PrintAsmLineOption.name.c_str(), required_argument, nullptr,
        PRINT_ASM_LINE_FILE},
-
-      // import scheudling heuristic
+      {optionSLMWeights.name.c_str(), required_argument, 0, SLM_WEIGHTS_FILE},
       {Schedule_StatsOption.name.c_str(), required_argument, 0,
        SCHEDULE_STATS_OUTPUT_FILE},
-      {FileMLModelOption.name.c_str(), required_argument, 0,
-       SCHEDULE_ML_MODEL_WEIGHT_FILE},
-
       {nullptr, 0, nullptr, 0}};
 
   /* getopt_long stores the option index here. */
@@ -635,30 +634,6 @@ void opts(int argc, char **argv) {
       params.dotAsmLineFile = optarg;
       LOG_OUTPUT(LOG_M_ALWAYS, PrintAsmLineOption.valueSetMesssage.c_str(),
                  params.dotAsmLineFile.c_str());
-      break;
-
-    case SCHEDULE_STATS_OUTPUT_FILE:
-      LOG_OUTPUT(LOG_M_ALWAYS, Schedule_StatsOption.enableMessage.c_str());
-      params.stats_file = optarg;
-      {
-        std::ofstream outfile;
-        std::string path(params.asmfile);
-        outfile.open(params.stats_file, std::ios::out);
-        outfile << "Assemblerfile;SLM-ID;SLM-Size;SLM-operations\n";
-        outfile.close();
-      }
-
-      LOG_OUTPUT(LOG_M_ALWAYS, Schedule_StatsOption.valueSetMesssage.c_str(),
-                 params.stats_file.c_str());
-
-      break;
-    case SCHEDULE_ML_MODEL_WEIGHT_FILE:
-      LOG_OUTPUT(LOG_M_ALWAYS, FileMLModelOption.enableMessage.c_str());
-      params.fileMLModel = optarg;
-      params.optimization = 1;
-      params.mergeLevel = 0;
-      LOG_OUTPUT(LOG_M_ALWAYS, FileMLModelOption.valueSetMesssage.c_str(),
-                 params.fileMLModel.c_str());
       break;
 
     case 'p':
@@ -777,6 +752,23 @@ void opts(int argc, char **argv) {
           params.powerOptimizationFile.c_str());
       break;
 
+    case SLM_WEIGHTS_FILE:
+      LOG_OUTPUT(LOG_M_ALWAYS, optionSLMWeights.enableMessage.c_str());
+      params.fileSlmWeights = optarg;
+      params.optimization = 1;
+      params.mergeLevel = 0;
+      LOG_OUTPUT(LOG_M_ALWAYS, optionSLMWeights.valueSetMesssage.c_str(),
+                 params.fileSlmWeights.c_str());
+      break;
+
+    case SCHEDULE_STATS_OUTPUT_FILE:
+      LOG_OUTPUT(LOG_M_ALWAYS, Schedule_StatsOption.enableMessage.c_str());
+      params.stats_file = optarg;
+
+      LOG_OUTPUT(LOG_M_ALWAYS, Schedule_StatsOption.valueSetMesssage.c_str(),
+                 params.stats_file.c_str());
+
+      break;
     case RA_REG_INSTRUCTION_MODEL:
       LOG_OUTPUT(LOG_M_ALWAYS,
                  optionsPowerRegisterAllocation[RA_REG_INSTRUCTION_MODEL]
@@ -929,6 +921,7 @@ void opts(int argc, char **argv) {
 #ifdef _OPENMP
       LOG_OUTPUT(LOG_M_ALWAYS, "using %s threads\n", optarg);
       params.threads = atoi(optarg);
+
 #else
       if (atoi(optarg) != 1) {
         std::cerr << "This program has been compiled without OpenMP support."
@@ -1162,6 +1155,9 @@ void opts(int argc, char **argv) {
       auto it = LOG_MASKS.find(optarg);
       if (it == LOG_MASKS.end()) {
         LOG_OUTPUT(LOG_M_ALWAYS, "Unknown log section '%s' ignored.\n", optarg);
+        std::stringstream ss;
+        ss << "Unknown log section '" << optarg << "' ignored.\n";
+        throw std::runtime_error(ss.str());
         break;
       }
       int64_t mask = it->second;
@@ -1341,6 +1337,27 @@ void opts(int argc, char **argv) {
     fprintf(stderr, "ERROR: Config-File is not set\n");
     printHelpOpts(argv[0]);
     exit(-1);
+  }
+  if (params.fileSlmWeights != "") {
+    params.optimization = 1;
+    params.mergeLevel = 0;
+
+    // enable parameters to read out the failure points
+    params.application_mode = false;
+    params.debugging = true;
+    params.logMask |= LOG_M_CHECK_EXEC;
+
+    LOG_OUTPUT(LOG_M_ALWAYS, "Overriding optimization level to %d\n",
+               params.optimization);
+    LOG_OUTPUT(LOG_M_ALWAYS, "Overriding merge level to %d\n",
+               params.mergeLevel);
+
+    ifstream ifile(params.fileSlmWeights);
+    if (!ifile) {
+      fprintf(stderr, "ERROR: Machine learning model file does not exist\n");
+      printHelpOpts(argv[0]);
+      exit(-1);
+    }
   }
 }
 

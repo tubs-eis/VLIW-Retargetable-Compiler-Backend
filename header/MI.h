@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef MI_H
 #define MI_H
 #include "MO.h"
@@ -101,7 +102,7 @@ public:
 
   void determineUsedWritePorts(int *usedWritePorts);
 
-  std::string getString(VirtualRegisterMap const *map);
+  std::string getString(VirtualRegisterMap const *map = nullptr) const;
 
   /**
    *
@@ -178,6 +179,7 @@ public:
    * @param line Assembler Line.
    */
   void registerMO2AssemblerLine(int line);
+  void writeOutScheduledWeight(ostream &ostream) const;
 };
 
 #endif // MI_H

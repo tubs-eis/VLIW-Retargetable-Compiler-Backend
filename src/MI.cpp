@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "MI.h"
 #include "../export/ScheduledMOCharacteristics.h"
 #include "MO.h"
@@ -212,7 +213,7 @@ Program::~Program() {
   _mis.clear();
 }
 
-// void Program::printInstructions(const Program *prog) {
+// void Program::writeOutInstructions(const Program *prog) {
 //  if (!prog)
 //    return;
 //  for (auto it = prog->begin(); it != prog->end(); ++it) {
@@ -221,7 +222,7 @@ Program::~Program() {
 //  }
 //}
 //
-// void Program::printInstructions(const Program *prog,
+// void Program::writeOutInstructions(const Program *prog,
 //                                const VirtualRegisterMap *mapping) {
 //  if (!prog)
 //    return;
@@ -247,7 +248,7 @@ int Program::getMergeCount() {
   return count;
 }
 
-string MI::getString(VirtualRegisterMap const *map) {
+string MI::getString(VirtualRegisterMap const *map) const {
   stringstream ss;
   for (int i = 0; i < slotNumber; i++) {
     if (mos[i]) {
@@ -255,4 +256,28 @@ string MI::getString(VirtualRegisterMap const *map) {
     }
   }
   return ss.str();
+}
+void MI::writeOutScheduledWeight(ostream &ostream) const {
+  if (!mos[0]) {
+    // empty MI, due to instruction latencies
+    ostream << "-1 0" << endl;
+    return;
+  }
+  int alone_bit = 0;
+  if (slotNumber == 1 or !mos[1]) {
+    alone_bit = 1;
+  }
+
+  ostream << mos[0]->getID() << " " << alone_bit << endl;
+  if (slotNumber > 2) {
+    throw logic_error(
+        "Unsure how to handle long instruction words, i.e. how to access them");
+  }
+  if (slotNumber != 1 and mos[1] and mos[0]->opLengthMultiplier() == 1) {
+    std::cout << mos[1]->to_string() << std::endl;
+    if (not params.debugging)
+      ostream << mos[1]->getID() << " 0" << endl;
+    else
+      ostream << mos[1]->getLineNumber() << " 0" << endl;
+  }
 }

@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 
@@ -31,6 +32,10 @@ private:
 
   void calculateTransitionEnergy();
 
+  // should the processor be deleted in the destructor. only in standalone
+  // (library call) should the processor not be deleted!
+  bool owns_processor = true;
+
 public:
   /** \brief Initializes an Assembler with the configuration file given by the
    * filename
@@ -47,8 +52,11 @@ public:
    * cessor(char* configFile)
    */
   Assembler(char *configFile);
+
+  Assembler(Processor *pro);
   /** \brief Destroys the assembler and cleans up. */
   ~Assembler();
+
   /** @brief sets the filedescriptor for a valid ASM-file
    *
    * the file is read in, comments are deletet, and all preprocessor operations
@@ -134,8 +142,6 @@ public:
    */
   void writeOutDot(std::ostream &out);
 
-  void writeCsvOutput(SLM *slm, bool error = false);
-
   void writeOutDotDetailed(std::ostream &out);
 
   /** \brief Compiles and optimizes a SLM.
@@ -167,6 +173,7 @@ public:
   void writeOutCompilableAssembler(std::ostream &out) const;
 
   void writeOutInstructionTransitions(std::ostream &out) const;
+  void writeCsvOutput(SLM *slm, bool error = false) const;
 };
 
 /***

@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef PROCESSOR_H
 #define PROCESSOR_H 1
 
@@ -134,13 +135,15 @@ public:
   bool isX2Supported() { return X2Support; }
   /** for nice printing out*/
   friend ostream &operator<<(ostream &out, const Processor &p) {
-    out << "EIS-VLIW" << std::endl;
+    out << "tukuturi-processor" << std::endl;
     for (std::vector<VectorUnit *>::const_iterator u = (p.Units).begin();
          u != (p.Units).end(); u++) {
       out << (*u);
     }
     return out;
   }
+
+  std::string convertFU2CSV() const;
 };
 
 #endif

@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "moai_special.h"
 
 #include "functionalunit.h"
@@ -362,6 +363,50 @@ void specialInit(SLM *slm, Processor *pro) {
 
     // special treatment for the X2 instructions.
     X2Modification(m);
+  }
+
+  // bug in kavuaka chip vu_ex.vhd smv_wr
+  if (pro->getProcessorName() == "kavuaka_chip") {
+    for (vector<MO *>::size_type i = 0; i < ops->size(); ++i) {
+      MO *m = (*ops)[i];
+      if (m->getTypes()[2] == Imm32) {
+        if (((m->getArguments()[2]) & (1 << (6))) &&
+            (((m->getArguments()[2] >> 27) == 0x1) ||
+             ((m->getArguments()[2] >> 27) == 0x0))) {
+          if (!strncmp(m->getOperation()->getName().c_str(), "MVIL", 4)) {
+            LOG_OUTPUT(LOG_M_ALWAYS,
+                       "WARNING: [line %u] Invalid IL instruction replaced due "
+                       "to chip hardware bug.\n",
+                       m->getLineNumber());
+            m->getArguments()[2] &= ~(0x1 << 6);
+            string or_strg = "ORIL";
+            or_strg.append(m->getOperation()->getSize());
+            m->setOperation(pro->getOperation(or_strg.c_str()));
+
+            string mv_strg = "MVI_64";
+            MO *mv = new MO(pro->getOperation(mv_strg.c_str()));
+
+            mv->getArguments()[0] = m->getArguments()[0];
+            mv->getArguments()[1] = 0x40;
+            mv->getTypes()[0] = REG;
+            mv->getTypes()[1] = Immediate;
+            mv->getDirections()[0] = WRITE;
+            mv->getDirections()[1] = READ;
+            mv->setArgNumber(2);
+            mv->setLineNumber(m->getLineNumber());
+
+            ops->insert(ops->begin() + i, mv);
+
+          } else {
+            cerr << "ERROR: [line " << m->getLineNumber()
+                 << "] Invalid IL instruction due chip hardware bug. No "
+                    "automatic fix possible."
+                 << endl;
+            EXIT_ERROR;
+          }
+        }
+      }
+    }
   }
 }
 

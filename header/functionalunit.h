@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef FUNCTIONALUNIT_H
 #define FUNCTIONALUNIT_H 1
 
@@ -100,9 +101,17 @@ public:
     return out;
   }
 
-  int getID() { return id; }
+  int getID() const { return id; }
 
   static int getNumFU() { return counter; }
+
+  int getLatency() const {
+    if (OP.empty()) {
+      throw std::runtime_error(
+          "Empty Functional Unit detected. Please check your config file.");
+    }
+    return OP[0]->getLatency();
+  }
 };
 
 /** @brief Returns the FunctionalUnit with the given Name

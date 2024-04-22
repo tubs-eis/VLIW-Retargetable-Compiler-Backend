@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "register.h"
 #include "global.h"
 #include "operation.h"
@@ -186,6 +187,29 @@ char32_t registers::createRegister(int regFile, int regNumber) {
   }
   return (regFile * numRegisters + regNumber);
 }
+
+void registers::getPhysicalRegister(char32_t ID, int *regFile, int *regNumber) {
+  if (ID >= SPECIALOFFSET) {
+    *regFile = -1;
+    *regNumber = ID & BITCODE;
+    return;
+  }
+  if (ID >= ((numRegisterFiles + 1) * numRegisters)) {
+    *regFile = -1;
+    *regNumber = ID - ((numRegisterFiles + 1) * numRegisters);
+    return;
+  }
+  *regFile = ID / numRegisters;
+  *regNumber = ID % numRegisters;
+}
+
+int registers::getDotID(const char32_t arg) {
+  int regFile, regNumber;
+  registers::getPhysicalRegister(arg, &regFile, &regNumber);
+  return 32000 + regFile * numRegisters + regNumber;
+}
+
+int registers::getDotOffset() { return 32000; }
 
 void inserte(char32_t value, char *bin, const string *s, int size, bool found) {
   string final;

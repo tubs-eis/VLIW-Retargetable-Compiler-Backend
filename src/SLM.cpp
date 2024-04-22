@@ -5,9 +5,11 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #include "SLM.h"
 #include "../powerEstimation/InstructionModel.h"
 #include "../powerEstimation/TransitionEnergyEstimator.h"
+#include "CompilerContext.h"
 #include "gen_merging.h"
 #include "label.h"
 #include "opts.h"
@@ -156,9 +158,9 @@ SLM::SLM() {
   memset(this->ins_per_thread, 0, MAX_THREAD_COUNT * sizeof(Program *));
   memset(this->map_per_thread, 0,
          MAX_THREAD_COUNT * sizeof(VirtualRegisterMap *));
-  //#if defined(_OPENMP)
-  //    omp_init_lock(&addLastInsLock);
-  //#endif
+  // #if defined(_OPENMP)
+  //     omp_init_lock(&addLastInsLock);
+  // #endif
   _registerHeuristicFit = -1;
   _registerGeneticFit = -1;
   partProb = -1;
@@ -714,6 +716,7 @@ void SLM::calculateGraph(Processor *pro, bool initialGraph) {
         }
       }
 
+      // iterate through the next MOs and find dependencies
       for (vector<MO *>::iterator ot = it + 1; ot != ops->end(); ++ot) {
         MO *mo2 = *ot;
         char32_t *args_second = mo2->getArguments();
@@ -753,8 +756,37 @@ void SLM::calculateGraph(Processor *pro, bool initialGraph) {
                              (registers::directFir(firstArg) &&
                               (firstDir & WRITE))) { // we write FIR content
                     mo1->addFollower(mo2);
+                  } else if (secondDir == READWRITE) {
+                    // target of the register dependency is a readwrite
+                    // operation. After this the following search is aborted!
+                    if (firstDir & READ) {
+                      // if it is also part of the source operands this has to
+                      // be a read dependency
+                      if (((firstArgIdx == 0 || firstArg == 4) &&
+                           (registers::equals(firstArg, args_second[1]) ||
+                            registers::equals(firstArg, args_second[2]))) ||
+                          (firstDir == READWRITE &&
+                           (registers::equals(firstArg, args_second[0]) ||
+                            registers::equals(firstArg, args_second[4])))
+                          //  || registers::equals(firstArg, args_second[0])
+                          // || registers::equals(firstArg, args_second[4])
+                          // mo2 has to read from the register
+                      ) {
+                        mo1->addFollower(mo2);
+                      } else {
+                        mo1->addWeakFollower(mo2);
+                      }
+                    } else {
+                      mo1->addFollower(mo2);
+                    }
+                    goto short_path_for_me;
                   } else if (firstDir & WRITE) {
-                    mo1->addFollower(mo2);
+                    if (secondDir & WRITE) {
+                      mo1->addWeakFollower(mo2);
+                    } else {
+                      mo1->addFollower(mo2);
+                    }
+
                   } else if (secondDir & WRITE) {
                     mo1->addWeakFollower(mo2);
                     goto short_path_for_me;
@@ -800,6 +832,7 @@ void SLM::calculateGraph(Processor *pro, bool initialGraph) {
     short_path_for_me:;
     }
   }
+
   // Special Construction for the branch operation.
   // reverse check if there are operations having a dependency with it.
   if (branchOperation != NULL) {
@@ -880,9 +913,41 @@ void SLM::writeOutDot(Processor *pro, const char *path) {
 }
 
 void SLM::writeOutDot(Processor *pro, ostream &out) {
+  if (pro->getIssueSlotNumber() != 1) {
+    cout << "WARNING: Coupled Register are only correctly calculated if only "
+            "ONE Issue Slot exists"
+         << std::endl;
+  }
   calculateGraph(pro, false);
   MO *longest = NULL;
   out << endl << "subgraph " << id << "{" << endl;
+  // print physical Register of previous SLM
+  ass_reg_t *blocked = blockedRegsInSLM.find(getOriginalID())->second;
+  int *freeReg = new int[registers::getNumRegisterFiles()];
+  calcFreeReg(blocked, freeReg);
+  auto blockedRegs = getBlockedRegisters(blocked);
+
+  // update RDG so that the coupled register can be displayed
+  // creators of coupled register block 2 register (bug in scheduler)
+  std::unique_ptr<VirtualRegisterMap> map =
+      std::make_unique<VirtualRegisterMap>();
+  std::unique_ptr<RegisterCoupling> couplings =
+      std::make_unique<RegisterCoupling>();
+  int notScheduableCSCR;
+  Program *ins =
+      gen_sched::scheduleSLM(0, this, pro, notScheduableCSCR, Context("sched"));
+  calculateCouplings(ins, map.get(), getFreeReg(), *(couplings.get()), pro);
+  rdg::RDG *rdg = rdg::RDG::analyseRegisterDependencies(
+      ins, couplings.get(), map.get(), blocked, false);
+
+  // print creation blocks
+  for (auto node : blockedRegs) {
+    int regFile, regNumber;
+    registers::getPhysicalRegister(node, &regFile, &regNumber);
+    out << registers::getDotOffset() + node << " [label=\"V" << regFile << "R"
+        << regNumber << "\",shape=box];" << endl;
+  }
+
   for (vector<MO *>::iterator it = ops->begin(); it != ops->end(); ++it) {
     if (longest == NULL || longest->getWeight() < (*it)->getWeight())
       longest = *it;
@@ -892,7 +957,7 @@ void SLM::writeOutDot(Processor *pro, ostream &out) {
       (*it)->setOnLongestPath();
   }
   for (vector<MO *>::iterator it = ops->begin(); it != ops->end(); ++it) {
-    (*it)->writeOutDot(out);
+    (*it)->writeOutDot(out, nullptr, 0, rdg, map.get());
     out << endl;
   }
   if (branchOperation != NULL) {
@@ -910,6 +975,20 @@ void SLM::writeOutDot(Processor *pro, ostream &out) {
   if (label != char32_t(-2))
     out << "\\nLabel: " << label::getLabelName(label);
   out << "\",shape=polygon,color=blue]\n";
+
+  // create Termination Node
+  auto terminationID = 32000 + numRegisterFiles * numRegisters + 1;
+  out << terminationID << " [label=\"  Termination Node\",shape=box,color=red];"
+      << endl;
+  for (auto node : blockedRegs) {
+    out << registers::getDotOffset() + node << " -> " << terminationID << ";"
+        << endl;
+  }
+
+  // delete pointer
+  delete[] freeReg;
+  delete ins;
+  delete rdg;
 
   out << "}" << endl;
 }
@@ -1046,4 +1125,13 @@ void SLM::calculateTransitionEnergy() {
       }
     }
   }
+}
+
+void SLM::initErrorMessage(Program *ins) {
+  stringstream ss;
+  if(ins)
+    ins->writeOutScheduledWeight(ss, getOriginalID());
+  else
+      ss << "Scheduling ERROR!";
+  this->error_string = ss.str();
 }

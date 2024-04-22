@@ -120,7 +120,7 @@ public:
     //      generation); childGeneration->print();
     int indexCounter = COPY;
 
-    //#pragma omp for nowait
+    // #pragma omp for nowait
     int combineMutateCounter = 0;
     for (size_t i = 0; i < COMBINE; ++i) {
       bool doublicate = false;

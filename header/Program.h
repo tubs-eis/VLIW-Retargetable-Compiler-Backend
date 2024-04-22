@@ -10,7 +10,7 @@
 #define SCHEDULER_PROGRAM_H
 
 class MI;
-//#include "MI.h"
+// #include "MI.h"
 #include "virtual_reg.h"
 #include <vector>
 
@@ -66,18 +66,16 @@ public:
     return cumulativeTransitionEnergy;
   }
 
-  //  static void printInstructions(const Program *prog);
-  //  static void printInstructions(const Program *prog,
-  //                                const VirtualRegisterMap *mapping);
-
   int getMergeCount();
 
-  void printInstructions(std::ostream &out,
-                         const VirtualRegisterMap *mapping = nullptr,
-                         bool printEnergy = false) const;
+  void writeOutInstructions(std::ostream &out,
+                            const VirtualRegisterMap *mapping = nullptr,
+                            bool printEnergy = false) const;
 
-  void printInstructionsCompilable(std::ostream &out,
-                                   const VirtualRegisterMap *mapping) const;
+  void writeOutInstructionsCompilable(
+      std::ostream &out, const VirtualRegisterMap *mapping = nullptr) const;
+
+  void writeOutScheduledWeight(std::ostream &out, int SLM_ID) const;
 
   uint getInstructionTransitions() const;
 

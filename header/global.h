@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef GLOBAL_H
 #define GLOBAL_H 1
 
@@ -17,6 +18,9 @@
 #ifdef _OPENMP
 #include "Constants.h"
 #include <omp.h>
+#endif
+#ifdef __APPLE__
+typedef unsigned int uint;
 #endif
 
 typedef int64_t LOG_MASK_T;
@@ -86,9 +90,12 @@ struct parameters {
 
   std::string compilableAssemblerFile;
 
-  // external scheduling heuristic
-  std::string fileMLModel = "";
+  std::string fileSlmWeights = "";
+  std::string slmWeights = "";
   std::string stats_file = "";
+  int alone_count = -1;
+  int best_sched_length = -1;
+
   /* ***** REGISTER ALLOCATION ************************* */
 
   /** Is the heuristic register allocation enabled? */
@@ -188,6 +195,10 @@ struct parameters {
   int stopSLM = -1;
 
   bool minPower = true;
+  bool application_mode = true;
+  bool debugging = false;
+  bool useLineNumbers = true;
+  std::string assembler_content = "";
 };
 
 /* The Logging system:
@@ -246,7 +257,7 @@ void flushLog();
 // distances are generated when allocating virtual registers. It gives a sense
 // of how long a pipeline could be. the printout can easily be visualized using
 // gnuplot.
-//#define PRINTOUT_DISTANCES 1
+// #define PRINTOUT_DISTANCES 1
 
 #ifdef PRINTOUT_DISTANCES
 #ifdef SETDEBUG
@@ -270,6 +281,7 @@ extern parameters params;
 #endif
 
 #define DEBUG_VIRTUAL_ALLOC 0
+#define VERBOSE_REGISTER_ALLOC 0
 
 #define CHECK_RA_TIMING 0
 #define CHECK_GA_STATS 0
@@ -293,7 +305,10 @@ void strcopy(char *to, char *from, int length = -1);
 // not everyone needs 32 bit as a maximum for a parameter. maybe make it
 // flexible for 64 bit/16 bit?
 // @test check if this really works with 4.9 or just with 5.1.
+#ifndef __APPLE__
 #define char32_t uint32_t
+#endif
+
 #endif
 
 /** \brief The maximum number of bits an Opcode could have.

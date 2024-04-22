@@ -688,6 +688,9 @@ void gen_X2::genetic(SLM *slm, Processor *pro, const Context &ctx) {
     return;
   }
 
+  //    if (size < 4 && pro->getProcessorName() != "kavuaka") {
+  //        return;
+  //    }
   int bestMinimalSize = -1;
 
   /* Generate initial population */

@@ -5,6 +5,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT
+
 #ifndef VIRTUAL_REG_H
 #define VIRTUAL_REG_H
 
@@ -180,6 +181,9 @@ public:
 
   std::vector<MI *>::iterator getFirstOccurrence() { return first_occurrence; }
   std::vector<MI *>::iterator getLastOccurrence() { return last_occurrence; }
+
+  int getFirstOccurenceID();
+  int getLastOccurenceID();
 
   bool isCoupled() { return coupled; }
 
@@ -428,6 +432,8 @@ ga_stats::ChromosomeFitness geneticRegisterAllocationPower(
 void printBlockedRegisters(const ass_reg_t *blocked, int *freeReg = NULL);
 
 std::vector<uint> getBlockedRegisters(const ass_reg_t *blocked);
+
+uint getNumBlockedRegs(const ass_reg_t *blocked);
 
 char32_t getReal(const VirtualRegisterMap *map,
                  const VirtualAllocation *regMapping, char32_t virt);
