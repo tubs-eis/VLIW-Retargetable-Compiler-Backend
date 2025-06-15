@@ -327,6 +327,7 @@ sched_chromosome *gen_sched::initialise_from_weights(int size, uint *seed,
   individual->partings = (bool *)malloc(sizeof(bool) * size);
   individual->alone = (bool *)malloc(sizeof(bool) * size);
   vector<MO *> *ops = slm->getOperations();
+  individual->num_mos = size;
   if (ops->size() != (size_t)size) {
     throw "initialization Size != ops.size();\n";
   }

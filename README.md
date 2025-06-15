@@ -90,14 +90,12 @@ Physical register are used to transfer information across basic block borders.
 The `mlweights.txt` file describes an alternative scheduling for instruction scheduling.
 Each Micro Operation (MO) is assigned a weight and the MO with the highest weights are scheduled first.
 
-todo:
-#### Energy-aware Register Allocation (January 2024)
-[kurz konfiguration beshreiben]
-
 
 ### Compilation
 
-To compile the project, please run `compile_example.sh` .
+To compile the project and run a basic example using list scheduling heuristic and evolutionary scheduling, please run `compile_basic_example.sh`.
+
+To compile the project and run an energy-aware scheduling, please run `compile_energy_aware_register_allocation_example.sh` (todo).
 
 
 ### Formatting

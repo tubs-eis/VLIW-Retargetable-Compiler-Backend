@@ -64,7 +64,15 @@ private:
   int geneticEnergyRegister = -1;
 
 public:
+  /**
+   * The Final size of the SLM.
+   * It is used to compare the size of the SLMs.
+   */
   int sched_size;
+  /**
+   * The number of MOs in the SLM.
+   */
+  int num_mos;
   /**
    * //todo: What am I?
    */
@@ -108,7 +116,7 @@ public:
 
   int getAloneCount() const {
     int count = 0;
-    for (int i = 0; i < sched_size; i++) {
+    for (int i = 0; i < num_mos; i++) {
       if (alone[i]) {
         count++;
       }

@@ -157,7 +157,6 @@ void virtual_init(SLM *slm, Processor *pro) {
   if (blocked) {
     free(blocked);
     blocked = nullptr;
-    blockedRegsInSLM.clear();
   }
   if (blocked == nullptr) {
     blocked = (ass_reg_t *)malloc(sizeof(ass_reg_t) *

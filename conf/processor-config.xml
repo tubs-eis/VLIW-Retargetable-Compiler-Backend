@@ -1,29 +1,28 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <processor>
-  <register-file>
+  <register-file> <!-- partitioned register file configuration -->
     <num-reg-files>2</num-reg-files>
     <reg-file-size>32</reg-file-size>
     <num-write-ports regFile="1">2</num-write-ports>
-    <num-read-ports  regFile="1">2</num-read-ports>
+    <num-read-ports  regFile="1">4</num-read-ports>
     <num-write-ports regFile="0">2</num-write-ports>
     <num-read-ports  regFile="0">4</num-read-ports>
   </register-file>
-  	<memory>
+  	<memory><!-- external memory interface -->
 		<num-memories>1</num-memories>
-		<num-read-ports>2</num-read-ports> 
-		<num-write-ports>2</num-write-ports>
+		<num-read-ports>1</num-read-ports> 
+		<num-write-ports>1</num-write-ports>
 	</memory>	
-  <vectorUnit numIssueSlots="2" registers="0,1">
+  <vectorUnit numIssueSlots="2" registers="0,1"> <!-- functional unit configuration -->
       <FU name="NOP" />
       <FU name="NOP" />
-      <FU name="BA"  />
-      <FU name="SR"  />
-      <FU name="BR"  />
-      <FU name="MOVE"/>
-
-      <FU name="BA"  />
-      <FU name="AA"  />
-      <FU name="SR"  />
+      <FU name="BA"  /> <!-- Basic Arithmetic 0-->
+      <FU name="SR"  /> <!-- Shift Round Unit 1 -->
+      <FU name="BR"  /> <!-- Branch Unit -->
+      <FU name="MOVE"/> <!-- Move Unit -->
+      <FU name="BA"  /> <!-- Basic Arithmetic 1 -->
+      <FU name="AA"  /> <!-- Advanced Arithmetic Unit (MAC) -->
+      <FU name="SR"  /> <!-- Shift Round Unit 1 -->
   </vectorUnit>
   <include name="base.xml" />
 <FU-define>
