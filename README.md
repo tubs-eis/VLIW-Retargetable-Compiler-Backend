@@ -47,7 +47,7 @@ This structure can be utilized to formulate an interaction linear regression ene
 
 The energy-aware register allocation is described in the following paper. If you use energy-aware aspect of this project, please cite it as follows:
 
-> Citaton published when available
+> Stuckmann, F.; Weißbrich, M.; Payá-Vayá, G. "Energy-Aware Register Allocation for VLIW Processors." Journal of Signal Processing Systems. 2024. https://doi.org/10.1007/s11265-024-01930-x.
 
 ## Table of Contents
 
