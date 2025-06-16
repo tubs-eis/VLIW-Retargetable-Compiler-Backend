@@ -68,6 +68,13 @@ The energy-aware register allocation is described in the following paper. If you
 
 ## Getting started
 
+### Requirements
+
+The following packages are need to be installed on top of Ubuntu 24.04 LTS (noble) to clone, compile and run this project.
+```sh
+apt install git build-essential cmake libboost-graph-dev
+```
+
 ### Installation
 Clone the repository
 ```bash
